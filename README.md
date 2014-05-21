@@ -8,7 +8,7 @@ Installation
 
 Add this line to your application's Gemfile:
 
-    gem 'ngannotate-rails', git: 'git@github.com:kikonen/ngannotate-rails.git'
+    gem 'ngannotate-rails'
 
 And then execute:
 
@@ -40,3 +40,8 @@ The actual ngannotate project is bundled into this gem via [Browserify](https://
 ### Test Application
 
 There is a Rails 3 application bundled in `example/` that you can use to test the asset pipeline integration. Don't forget to remove `tmp/cache/assets` after upgrading to the latest version of ngannotate.
+
+Credits
+-------
+
+This gem is based into https://github.com/btford/ngmin
