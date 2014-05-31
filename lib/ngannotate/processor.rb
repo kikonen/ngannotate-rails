@@ -12,8 +12,18 @@ module Ngannotate
     end
 
     def evaluate(context, locals)
-      r = @context.call 'window.annotate', data, { add: true }
+      opt = { add: true }.merge(parse_opt)
+      r = @context.call 'window.annotate', data, opt
       r['src']
+    end
+
+    def parse_opt
+      opt = {}
+      opt_str = ENV['NG_OPT']
+      if opt_str
+        opt = Hash[opt_str.split(',').map { |e| e.split('=') }]
+      end
+      opt
     end
   end
 end
