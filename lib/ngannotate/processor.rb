@@ -12,7 +12,7 @@ module Ngannotate
     end
 
     def evaluate(context, locals)
-      opt = { add: true }.merge(parse_opt)
+      opt = { add: true }.merge!(parse_opt)
       r = @context.call 'window.annotate', data, opt
       r['src']
     end
@@ -22,6 +22,10 @@ module Ngannotate
       opt_str = ENV['NG_OPT']
       if opt_str
         opt = Hash[opt_str.split(',').map { |e| e.split('=') }]
+        opt.symbolize_keys!
+      end
+      if ENV['NG_REGEXP']
+        opt[:regexp] = ENV['NG_REGEXP']
       end
       opt
     end
