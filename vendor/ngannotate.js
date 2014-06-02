@@ -1121,8 +1121,6 @@ function match(node, re, matchPlugins) {
 }
 
 function matchDirectiveReturnObject(node) {
-    // TODO make these more strict by checking that we're inside an angular module?
-
     // return { .. controller: function($scope, $timeout), ...}
 
     return node.type === "ReturnStatement" &&
@@ -1131,8 +1129,6 @@ function matchDirectiveReturnObject(node) {
 }
 
 function matchProviderGet(node) {
-    // TODO make these more strict by checking that we're inside an angular module?
-
     // (this|self|that).$get = function($scope, $timeout)
     // { ... $get: function($scope, $timeout), ...}
     var memberExpr;
@@ -1194,7 +1190,7 @@ function matchNgUi(node) {
     //     onExit: function($scope)
     // });
     // $stateProvider.state("myState", {... resolve: {f: function($scope) {}, ..} ..})
-    // $stateProvider.state("myState", {... views: {... somename: {... controller: fn, templateProvider: fn, resolve: {f: fn}}}})
+    // $stateProvider.state("myState", {... views: {... somename: {... controller: fn, controllerProvider: fn, templateProvider: fn, resolve: {f: fn}}}})
     //
     // $urlRouterProvider.when(.., function($scope) {})
     //
@@ -1263,6 +1259,7 @@ function matchNgUi(node) {
         viewObject.properties.forEach(function(prop) {
             if (prop.value.type === "ObjectExpression") {
                 res.push(matchProp("controller", prop.value.properties));
+                res.push(matchProp("controllerProvider", prop.value.properties));
                 res.push(matchProp("templateProvider", prop.value.properties));
                 res.push.apply(res, matchResolve(prop.value.properties));
             }
@@ -1306,9 +1303,14 @@ function matchRegular(node, re) {
     }
 
     var args = node.arguments;
-    return (is.someof(method.name, ["config", "run"]) ?
+    var target = (is.someof(method.name, ["config", "run"]) ?
         args.length === 1 && args[0] :
         args.length === 2 && args[0].type === "Literal" && is.string(args[0].value) && args[1]);
+
+    if (target) {
+        target.$always = true;
+    }
+    return target;
 }
 
 // Short form: *.controller("MyCtrl", function($scope, $timeout) {});
@@ -1406,21 +1408,46 @@ function removeArray(array, fragments) {
     });
 }
 
-function replaceRemoveOrInsertArrayForTarget(target, ctx) {
+function judgeSuspects(ctx) {
+    var suspects = ctx.suspects;
     var mode = ctx.mode;
     var fragments = ctx.fragments;
     var quot = ctx.quot;
 
-    if (mode === "rebuild" && isAnnotatedArray(target)) {
-        replaceArray(target, fragments, quot);
-    } else if (mode === "remove" && isAnnotatedArray(target)) {
-        removeArray(target, fragments);
-    } else if (is.someof(mode, ["add", "rebuild"]) && isFunctionExpressionWithArgs(target)) {
-        insertArray(target, fragments, quot);
-    } else {
-        return false;
+    for (var i = 0; i < suspects.length; i++) {
+        var target = suspects[i];
+
+        if (target.$once) {
+            continue;
+        }
+        target.$once = true;
+
+        if (!target.$always) {
+            var $caller = target.$caller;
+            for (; $caller && $caller.$chained !== chainedRegular; $caller = $caller.$caller) {
+            }
+            if (!$caller) {
+                continue;
+            }
+        }
+
+        if (mode === "rebuild" && isAnnotatedArray(target)) {
+            replaceArray(target, fragments, quot);
+        } else if (mode === "remove" && isAnnotatedArray(target)) {
+            removeArray(target, fragments);
+        } else if (is.someof(mode, ["add", "rebuild"]) && isFunctionExpressionWithArgs(target)) {
+            insertArray(target, fragments, quot);
+        }
     }
-    return true;
+}
+
+function addModuleContextDependentSuspect(target, ctx) {
+    ctx.suspects.push(target);
+}
+
+function addModuleContextIndependentSuspect(target, ctx) {
+    target.$always = true;
+    ctx.suspects.push(target);
 }
 
 function isAnnotatedArray(node) {
@@ -1485,6 +1512,14 @@ window.annotate = function ngAnnotate(src, options) {
     // first node at (or after) a certain pos
     var triggers = new Heap();
 
+    // suspects is built up with suspect nodes by match.
+    // A suspect node will get annotations added / removed if it
+    // fulfills the arrayexpression or functionexpression look,
+    // and if it is in the correct context (inside an angular
+    // module definition) - alternatively is forced to ignore
+    // context with node.$always = true
+    var suspects = [];
+
     var ctx = {
         mode: mode,
         quot: quot,
@@ -1492,10 +1527,12 @@ window.annotate = function ngAnnotate(src, options) {
         comments: comments,
         fragments: fragments,
         triggers: triggers,
+        suspects: suspects,
         isFunctionExpressionWithArgs: isFunctionExpressionWithArgs,
         isFunctionDeclarationWithArgs: isFunctionDeclarationWithArgs,
         isAnnotatedArray: isAnnotatedArray,
-        replaceRemoveOrInsertArrayForTarget: replaceRemoveOrInsertArrayForTarget,
+        addModuleContextDependentSuspect: addModuleContextDependentSuspect,
+        addModuleContextIndependentSuspect: addModuleContextIndependentSuspect,
         stringify: stringify,
     };
 
@@ -1516,13 +1553,26 @@ window.annotate = function ngAnnotate(src, options) {
         plugin.init(ctx);
     });
 
+    var recentCaller = undefined; // micro-optimization
+    var callerIds = [];
     traverse(ast, {pre: function(node) {
+        node.$caller = recentCaller;
+        if (node.type === "CallExpression") {
+            callerIds.push(node);
+            recentCaller = node;
+        }
+
         var pos = node.range[0];
         while (pos >= triggers.pos) {
             var trigger = triggers.getAndRemoveNext();
             trigger.fn.call(null, node, trigger.ctx);
         }
     }, post: function(node) {
+        if (node === recentCaller) {
+            callerIds.pop();
+            recentCaller = last(callerIds);
+        }
+
         var targets = match(node, re, matchPluginsOrNull);
         if (!targets) {
             return;
@@ -1531,11 +1581,12 @@ window.annotate = function ngAnnotate(src, options) {
             targets = [targets];
         }
 
-        // TODO add something to know that node has been altered so it won't happen again
         for (var i = 0; i < targets.length; i++) {
-            replaceRemoveOrInsertArrayForTarget(targets[i], ctx);
+            addModuleContextDependentSuspect(targets[i], ctx);
         }
     }});
+
+    judgeSuspects(ctx);
 
     var out = alter(src, fragments);
 
@@ -1573,27 +1624,59 @@ function ngInjectCommentsInit(ctx) {
     ctx.triggers.addMany(triggers);
 }
 
-function visitNodeFollowingNgInjectComment(node, ctx) {
-    // TODO objectliteral (if add or remove)
+function nestedObjectValues(node, res) {
+    res = res || [];
 
-    if (ctx.replaceRemoveOrInsertArrayForTarget(node, ctx)) {
+    node.properties.forEach(function(prop) {
+        var v = prop.value;
+        if (is.someof(v.type, ["FunctionExpression", "ArrayExpression"])) {
+            res.push(v);
+        } else if (v.type === "ObjectExpression") {
+            nestedObjectValues(v, res);
+        }
+    });
+
+    return res;
+}
+
+function visitNodeFollowingNgInjectComment(node, ctx) {
+    // handle most common case: /*@ngInject*/ prepended to an array or function expression
+    if (node.type === "ArrayExpression" || node.type === "FunctionExpression") {
+        ctx.addModuleContextIndependentSuspect(node, ctx);
         return;
     }
 
-    // var foo = function($scope) {}
+    if (node.type === "ObjectExpression") {
+        nestedObjectValues(node).forEach(function(n) {
+            ctx.addModuleContextIndependentSuspect(n, ctx);
+        });
+        return;
+    }
+
+    // /*@ngInject*/ var foo = function($scope) {} and
+    // /*@ngInject*/ function foo($scope) {}
     var d0 = null;
     var nr1 = node.range[1];
     if (node.type === "VariableDeclaration" && node.declarations.length === 1 &&
         (d0 = node.declarations[0]).init && ctx.isFunctionExpressionWithArgs(d0.init)) {
         var isSemicolonTerminated = (ctx.src[nr1 - 1] === ";");
-        addRemoveInjectsArray(d0.init.params, isSemicolonTerminated ? nr1 : d0.init.range[1], d0.id.name);
+        addRemoveInjectArray(d0.init.params, isSemicolonTerminated ? nr1 : d0.init.range[1], d0.id.name);
     } else if (ctx.isFunctionDeclarationWithArgs(node)) {
-        addRemoveInjectsArray(node.params, nr1, node.id.name);
+        addRemoveInjectArray(node.params, nr1, node.id.name);
     }
 
+    function getIndent(pos) {
+        var src = ctx.src;
+        var lineStart = src.lastIndexOf("\n", pos - 1) + 1;
+        var i = lineStart;
+        for (; src[i] === " " || src[i] === "\t"; i++) {
+        }
+        return src.slice(lineStart, i);
+    }
 
-    function addRemoveInjectsArray(params, posAfterFunctionDeclaration, name) {
-        var str = fmt("\n{0}.$injects = {1};", name, ctx.stringify(params, ctx.quot));
+    function addRemoveInjectArray(params, posAfterFunctionDeclaration, name) {
+        var indent = getIndent(posAfterFunctionDeclaration);
+        var str = fmt("\n{0}{1}.$inject = {2};", indent, name, ctx.stringify(params, ctx.quot));
 
         ctx.triggers.add({
             pos: posAfterFunctionDeclaration,
@@ -1603,24 +1686,24 @@ function visitNodeFollowingNgInjectComment(node, ctx) {
         function visitNodeFollowingFunctionDeclaration(nextNode) {
             var assignment = nextNode.expression;
             var lvalue;
-            var hasInjectsArray = (nextNode.type === "ExpressionStatement" && assignment.type === "AssignmentExpression" &&
+            var hasInjectArray = (nextNode.type === "ExpressionStatement" && assignment.type === "AssignmentExpression" &&
                 assignment.operator === "=" &&
                 (lvalue = assignment.left).type === "MemberExpression" &&
-                lvalue.computed === false && lvalue.object.name === name && lvalue.property.name === "$injects");
+                lvalue.computed === false && lvalue.object.name === name && lvalue.property.name === "$inject");
 
-            if (ctx.mode === "rebuild" && hasInjectsArray) {
+            if (ctx.mode === "rebuild" && hasInjectArray) {
                 ctx.fragments.push({
                     start: posAfterFunctionDeclaration,
                     end: nextNode.range[1],
                     str: str,
                 });
-            } else if (ctx.mode === "remove" && hasInjectsArray) {
+            } else if (ctx.mode === "remove" && hasInjectArray) {
                 ctx.fragments.push({
                     start: posAfterFunctionDeclaration,
                     end: nextNode.range[1],
                     str: "",
                 });
-            } else if (is.someof(ctx.mode, ["add", "rebuild"]) && !hasInjectsArray) {
+            } else if (is.someof(ctx.mode, ["add", "rebuild"]) && !hasInjectArray) {
                 ctx.fragments.push({
                     start: posAfterFunctionDeclaration,
                     end: posAfterFunctionDeclaration,
@@ -3195,8 +3278,6 @@ parseStatement: true, parseSourceElement: true */
                     return;
                 }
             }
-
-            peek();
 
             if (extra.trailingComments.length > 0) {
                 if (extra.trailingComments[0].range[0] >= node.range[1]) {
@@ -5521,7 +5602,7 @@ parseStatement: true, parseSourceElement: true */
     }
 
     // Sync with *.json manifests.
-    exports.version = '1.2.1';
+    exports.version = '1.2.2';
 
     exports.tokenize = tokenize;
 
