@@ -7,11 +7,21 @@ module Ngannotate
     end
 
     def prepare
+      return if skip
       ngannotate_source = File.open(File.join(File.dirname(__FILE__), '../../vendor/ngannotate.js')).read
       @context = ExecJS.compile "window = {};" + ngannotate_source
     end
 
+    #
+    # Skip processing in environments where it does not make sense
+    #
+    def skip
+      ::Rails.env.development? || ::Rails.env.test?
+    end
+
     def evaluate(context, locals)
+      return data if skip
+
       opt = { add: true }.merge!(parse_opt)
       r = @context.call 'window.annotate', data, opt
       r['src']
