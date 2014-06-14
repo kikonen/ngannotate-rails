@@ -16,6 +16,28 @@ And then execute:
 
 That's it! ngannotate-rails integrates seamlessly into the Rails asset pipeline; your JavaScript or CoffeeScript assets will automatically be run through the ngannotate pre-minifier.
 
+Usage
+-----
+
+By default ng-annotate processing is disabled in development and test environments. Processing, however, can be enforced by specifying NG_FORCE=true option.
+
+
+Options available as environment variables:
+
+    NG_REGEXP     - regexp passed to ng-annoate
+                    see ng-annotate documentation
+    NG_OPT        - comma separate list of "opt=value" key pairs passed as options to ng-annotate
+                    see ng-annotate documentation
+    NG_FORCE=true - force ng-annoate processing in development/test environment
+
+
+Examples,
+
+    # Test assets compile in rails development environment
+    # (assuming config/environments/development.rb is adjusted approriately)
+    NG_FORCE=true RAILS_ENV=development bundle exec rake assets:clean assets:precompile
+
+
 Versioning
 ----------
 
@@ -45,4 +67,3 @@ Credits
 -------
 
 This gem is based into https://github.com/jasonm/ngmin-rails
-
