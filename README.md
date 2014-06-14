@@ -44,4 +44,5 @@ There is a Rails 3 application bundled in `example/` that you can use to test th
 Credits
 -------
 
-This gem is based into https://github.com/btford/ngmin
+This gem is based into https://github.com/jasonm/ngmin-rails
+
