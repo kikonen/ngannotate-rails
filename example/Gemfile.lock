@@ -1,7 +1,7 @@
 PATH
   remote: ../
   specs:
-    ngannotate-rails (0.9.5)
+    ngannotate-rails (0.9.6)
       rails (>= 3.1)
 
 GEM
