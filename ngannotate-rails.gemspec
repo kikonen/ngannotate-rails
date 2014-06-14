@@ -9,7 +9,7 @@ Gem::Specification.new do |spec|
   spec.authors       = ["Kari Ikonen"]
   spec.email         = ["mr.kari.ikonen@gmail.com"]
   spec.description   = %q{Use ngannotate in the Rails asset pipeline.}
-  spec.summary       = %q{Use ngannotate in the Rails asset pipeline.}
+  spec.summary       = %q{Summary: Use ngannotate in the Rails asset pipeline.}
   spec.homepage      = "https://github.com/kikonen/ngannotate-rails"
   spec.license       = "MIT"
 
