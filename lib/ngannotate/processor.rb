@@ -1,3 +1,4 @@
+require 'execjs'
 require 'sprockets/processor'
 
 module Ngannotate
