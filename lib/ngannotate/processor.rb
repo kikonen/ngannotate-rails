@@ -3,14 +3,20 @@ require 'sprockets/processor'
 
 module Ngannotate
   class Processor < Sprockets::Processor
+    @@shared_context = nil
+
     def self.name
       'Ngannotate::Processor'
     end
 
     def prepare
       return if skip
-      ngannotate_source = File.open(File.join(File.dirname(__FILE__), '../../vendor/ngannotate.js')).read
-      @context = ExecJS.compile "window = {};" + ngannotate_source
+      @context = @@shared_context
+      unless @context
+        logger.info "prepare shared context"
+        ngannotate_source = File.open(File.join(File.dirname(__FILE__), '../../vendor/ngannotate.js')).read
+        @context = @@shared_context = ExecJS.compile "window = {};" + ngannotate_source
+      end
     end
 
     #
@@ -39,6 +45,8 @@ module Ngannotate
       opt = { add: true }.merge!(parse_opt)
       r = @context.call 'window.annotate', data, opt
       r['src']
+    ensure
+      logger.info "ng-annotate #{context.logical_path}.js"
     end
 
     def parse_opt
