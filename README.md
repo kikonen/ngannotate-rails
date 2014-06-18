@@ -38,6 +38,32 @@ Examples,
     NG_FORCE=true RAILS_ENV=development bundle exec rake assets:clean assets:precompile
 
 
+Testing assets locally
+----------------------
+
+To allow testing precompiled assets locally in development environment.
+
+config/environments/development.yml
+
+    #
+    # to allow testing assets:precompile in development environment
+    # Usage:
+    #   time NG_FORCE=true RAILS_ENV=development bundle exec rake assets:clean assets:precompile:primary
+    #   NG_FORCE=true rails s -p 3001
+    #
+    if ENV['NG_FORCE'] == 'true'
+      config.assets.compress = true
+      config.assets.compile = false
+      config.assets.digest = true
+      config.assets.debug = false
+    end
+
+precompile & start server
+
+    time NG_FORCE=true RAILS_ENV=development bundle exec rake assets:clean assets:precompile:primary
+    NG_FORCE=true rails s -p 3001
+
+
 Versioning
 ----------
 
