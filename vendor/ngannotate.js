@@ -1319,8 +1319,7 @@ function matchRegular(node, ctx) {
 // matches with --regexp "^require(.*)$"
 //   require("app-module").controller("MyCtrl", function($scope) {});
 function isReDef(node, ctx) {
-    var slice = ctx.src.slice(node.range[0], node.range[1]);
-    return ctx.re.test(slice);
+    return ctx.re.test(ctx.srcForRange(node.range));
 }
 
 // Long form: angular.module(*).controller("MyCtrl", function($scope, $timeout) {});
@@ -1521,6 +1520,9 @@ window.annotate = function ngAnnotate(src, options) {
         mode: mode,
         quot: quot,
         src: src,
+        srcForRange: function(range) {
+            return src.slice(range[0], range[1]);
+        },
         re: re,
         comments: comments,
         fragments: fragments,
@@ -1661,6 +1663,11 @@ function visitNodeFollowingNgInjectComment(node, ctx) {
         addRemoveInjectArray(d0.init.params, isSemicolonTerminated ? nr1 : d0.init.range[1], d0.id.name);
     } else if (ctx.isFunctionDeclarationWithArgs(node)) {
         addRemoveInjectArray(node.params, nr1, node.id.name);
+    } else if (node.type === "ExpressionStatement" && node.expression.type === "AssignmentExpression" &&
+        ctx.isFunctionExpressionWithArgs(node.expression.right)) {
+        var isSemicolonTerminated$0 = (ctx.src[nr1 - 1] === ";");
+        var name = ctx.srcForRange(node.expression.left.range);
+        addRemoveInjectArray(node.expression.right.params, isSemicolonTerminated$0 ? nr1 : node.expression.right.range[1], name);
     }
 
     function getIndent(pos) {
@@ -1687,7 +1694,7 @@ function visitNodeFollowingNgInjectComment(node, ctx) {
             var hasInjectArray = (nextNode.type === "ExpressionStatement" && assignment.type === "AssignmentExpression" &&
                 assignment.operator === "=" &&
                 (lvalue = assignment.left).type === "MemberExpression" &&
-                lvalue.computed === false && lvalue.object.name === name && lvalue.property.name === "$inject");
+                lvalue.computed === false && ctx.srcForRange(lvalue.object.range) === name && lvalue.property.name === "$inject");
 
             if (ctx.mode === "rebuild" && hasInjectArray) {
                 ctx.fragments.push({
