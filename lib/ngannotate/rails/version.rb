@@ -1,5 +1,5 @@
 module Ngannotate
   module Rails
-    VERSION = "0.9.9"
+    VERSION = "0.9.11"
   end
 end

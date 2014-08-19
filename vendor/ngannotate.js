@@ -1414,44 +1414,135 @@ module.exports = function generateSourcemap(src, fragments, inFile, sourceRoot) 
     return new SourceMapper(src, fragments, inFile, sourceRoot).generate();
 }
 
-},{"source-map":19,"stable":29}],9:[function(require,module,exports){
+},{"source-map":20,"stable":30}],9:[function(require,module,exports){
+// lut.js
+// MIT licensed, see LICENSE file
+// Copyright (c) 2013-2014 Olov Lassus <olov.lassus@gmail.com>
+
 "use strict";
 
 var assert = require("assert");
-var PriorityQueue = require("priorityqueuejs");
+var traverse = require("ordered-ast-traverse");
+var is = require("simple-is");
 
-function Heap() {
-    assert(this instanceof Heap);
+module.exports = Lut;
 
-    var q = new PriorityQueue(function(a, b) {
-        return b.pos - a.pos;
-    });
+function Lut(ast, src) {
+    assert(this instanceof Lut);
 
-    function nextPos() {
-        return (q.size() >= 1 ? q.peek().pos : (1 << 30));
+    var sparseBegins = new Array(src.length);
+    var begins = [];
+    var sparseEnds = new Array(src.length);
+    var ends = [];
+    var p = 0;
+    var t0 = Date.now();
+    traverse(ast, {pre: function(node) {
+        //        assert (node.range[0] >= p);
+        if (node.type === "Program") {
+            return;
+        }
+        p = node.range[0];
+        if (!sparseBegins[p]) {
+            sparseBegins[p] = node;
+        }
+        p = node.range[1];
+        if (!sparseEnds[p]) {
+            sparseEnds[p] = node;
+        }
+    }});
+    for (var i in sparseBegins) {
+        begins.push(sparseBegins[i]);
     }
+    for (var i$0 in sparseEnds) {
+        ends.push(sparseEnds[i$0]);
+    }
+    var t1 = Date.now();
+    //    console.error(t1-t0)
 
-    this.pos = (1 << 30);
-    this.addMany = function(arr) {
-        arr.forEach(function(e) {
-            q.enq(e);
-        });
-        this.pos = nextPos();
-    };
-    this.add = function(e) {
-        q.enq(e);
-        this.pos = nextPos();
-    };
-    this.getAndRemoveNext = function() {
-        var e = q.deq();
-        this.pos = nextPos();
-        return e;
-    };
+    // begins and ends are compact arrays with nodes,
+    // sorted on node.range[0/1] (unique)
+    this.begins = begins;
+    this.ends = ends;
 }
 
-module.exports = Heap;
+Lut.prototype.findNodeFromPos = findNodeFromPos;
+Lut.prototype.findNodeBeforePos = findNodeBeforePos;
 
-},{"assert":1,"priorityqueuejs":16}],10:[function(require,module,exports){
+// binary search lut to find node beginning at pos
+// or as close after pos as possible. null if none
+function findNodeFromPos(pos) {
+    var lut = this.begins;
+    assert(is.finitenumber(pos) && pos >= 0);
+
+    var left = 0;
+    var right = lut.length - 1;
+    while (left < right) {
+        var mid = Math.floor((left + right) / 2);
+        assert(mid >= 0 && mid < lut.length);
+        if (pos > lut[mid].range[0]) {
+            left = mid + 1;
+        }
+        else {
+            right = mid;
+        }
+    }
+    if (left > right) {
+        assert(last(lut).range[0] < pos);
+        return null;
+    }
+
+    var found = left;
+    var foundPos = lut[found].range[0];
+    assert(foundPos >= pos);
+    if (found >= 1) {
+        var prevPos = lut[found - 1].range[0];
+        assert(prevPos < pos);
+    }
+
+    return lut[found];
+}
+
+// binary search lut to find node ending (as in range[1]
+// at or before pos. null if none
+function findNodeBeforePos(pos) {
+    var lut = this.ends;
+    assert(is.finitenumber(pos) && pos >= 0);
+
+    var left = 0;
+    var right = lut.length - 1;
+    while (left < right) {
+        var mid = Math.ceil((left + right) / 2);
+        assert(mid >= 0 && mid < lut.length);
+        if (pos < lut[mid].range[1]) {
+            right = mid - 1;
+        }
+        else {
+            left = mid;
+        }
+    }
+    if (left > right) {
+        assert(lut[0].range[1] > pos);
+        return null;
+    }
+
+    var found = left;
+    var foundPos = lut[found].range[1];
+    if(foundPos > pos) {
+        return null;
+    }
+    if (found <= lut.length - 2) {
+        var nextPos = lut[found + 1].range[1];
+        assert(nextPos > pos);
+    }
+
+    return lut[found];
+}
+
+function last(arr) {
+    return arr[arr.length - 1];
+}
+
+},{"assert":1,"ordered-ast-traverse":17,"simple-is":19}],10:[function(require,module,exports){
 // ng-annotate-main.js
 // MIT licensed, see LICENSE file
 // Copyright (c) 2013-2014 Olov Lassus <olov.lassus@gmail.com>
@@ -1460,12 +1551,16 @@ module.exports = Heap;
 var esprima_require_t0 = Date.now();
 var esprima = require("esprima").parse;
 var esprima_require_t1 = Date.now();
+var fmt = require("simple-fmt");
 var is = require("simple-is");
 var alter = require("alter");
 var traverse = require("ordered-ast-traverse");
-var Heap = require("./heap");
-var ngInjectComments = require("./nginject-comments");
+var EOL = require("os").EOL;
+var assert = require("assert");
+var ngInject = require("./nginject");
 var generateSourcemap = require("./generate-sourcemap");
+var Lut = require("./lut");
+var scopeTools = require("./scopetools");
 
 var chainedRouteProvider = 1;
 var chainedUrlRouterProvider = 2;
@@ -1806,6 +1901,14 @@ function judgeSuspects(ctx) {
         }
 
         target = jumpOverIife(target);
+        var followedTarget = followReference(target);
+        if (followedTarget) {
+            if (followedTarget.$once) {
+                continue;
+            }
+            followedTarget.$once = true;
+            target = followedTarget;
+        }
 
         if (mode === "rebuild" && isAnnotatedArray(target)) {
             replaceArray(target, fragments, quot);
@@ -1813,6 +1916,121 @@ function judgeSuspects(ctx) {
             removeArray(target, fragments);
         } else if (is.someof(mode, ["add", "rebuild"]) && isFunctionExpressionWithArgs(target)) {
             insertArray(target, fragments, quot);
+        } else {
+            // if it's not array or function-expression, then it's a candidate for foo.$inject = [..]
+            judgeInjectArraySuspect(target, ctx);
+        }
+    }
+}
+
+function followReference(node) {
+    if (!scopeTools.isReference(node)) {
+        return null;
+    }
+
+    var scope = node.$scope.lookup(node.name);
+    if (!scope) {
+        return null;
+    }
+
+    var parent = scope.getNode(node.name).$parent;
+    var kind = scope.getKind(node.name);
+    var ptype = parent.type;
+
+    if (is.someof(kind, ["const", "let", "var"])) {
+        assert(ptype === "VariableDeclarator");
+        return parent.init;
+    } else if (kind === "fun") {
+        assert(ptype === "FunctionDeclaration" || ptype === "FunctionExpression")
+        return parent;
+    }
+
+    // other kinds should not be handled ("param", "caught")
+
+    return null;
+}
+
+function judgeInjectArraySuspect(node, ctx) {
+    // /*@ngInject*/ var foo = function($scope) {} and
+    // /*@ngInject*/ function foo($scope) {} and
+    // /*@ngInject*/ foo.bar[0] = function($scope) {}
+    var d0 = null;
+    var nr0 = node.range[0];
+    var nr1 = node.range[1];
+    if (node.type === "VariableDeclaration" && node.declarations.length === 1 &&
+        (d0 = node.declarations[0]).init && ctx.isFunctionExpressionWithArgs(d0.init)) {
+        var isSemicolonTerminated = (ctx.src[nr1 - 1] === ";");
+        addRemoveInjectArray(d0.init.params, nr0, isSemicolonTerminated ? nr1 : d0.init.range[1], d0.id.name);
+    } else if (ctx.isFunctionDeclarationWithArgs(node)) {
+        addRemoveInjectArray(node.params, nr0, nr1, node.id.name);
+    } else if (node.type === "ExpressionStatement" && node.expression.type === "AssignmentExpression" &&
+        ctx.isFunctionExpressionWithArgs(node.expression.right)) {
+        var isSemicolonTerminated$0 = (ctx.src[nr1 - 1] === ";");
+        var name = ctx.srcForRange(node.expression.left.range);
+        addRemoveInjectArray(node.expression.right.params, nr0, isSemicolonTerminated$0 ? nr1 : node.expression.right.range[1], name);
+    }
+
+    function getIndent(pos) {
+        var src = ctx.src;
+        var lineStart = src.lastIndexOf("\n", pos - 1) + 1;
+        var i = lineStart;
+        for (; src[i] === " " || src[i] === "\t"; i++) {
+        }
+        return src.slice(lineStart, i);
+    }
+
+    function addRemoveInjectArray(params, posBeforeFunctionDeclaration, posAfterFunctionDeclaration, name) {
+        var indent = getIndent(posAfterFunctionDeclaration);
+
+        var nextNode = ctx.lut.findNodeFromPos(posAfterFunctionDeclaration);
+        var prevNode = ctx.lut.findNodeBeforePos(posBeforeFunctionDeclaration);
+
+        function hasInjectArray(node) {
+            var lvalue;
+            var assignment;
+            return (node && node.type === "ExpressionStatement" && (assignment = node.expression).type === "AssignmentExpression" &&
+                assignment.operator === "=" &&
+                (lvalue = assignment.left).type === "MemberExpression" &&
+                ((lvalue.computed === false && ctx.srcForRange(lvalue.object.range) === name && lvalue.property.name === "$inject") ||
+                    (lvalue.computed === true && ctx.srcForRange(lvalue.object.range) === name && lvalue.property.type === "Literal" && lvalue.property.value === "$inject")));
+        }
+
+        function skipNewline(pos) {
+            if (ctx.src[pos] === "\n") {
+                return pos + 1;
+            } else if (ctx.src.slice(pos, pos + 2) === "\r\n") {
+                return pos + 2;
+            }
+            return pos;
+        }
+
+        var hasArrayBefore = hasInjectArray(prevNode);
+        var hasArrayAfter = hasInjectArray(nextNode);
+
+        var hasArray = hasArrayBefore || hasArrayAfter;
+        var start = hasArrayBefore ? prevNode.range[0]: posAfterFunctionDeclaration;
+        var end = hasArrayBefore ? skipNewline(prevNode.range[1]) : nextNode.range[1];
+
+        var str = fmt("{0}{1}{2}.$inject = {3};", EOL, indent, name, ctx.stringify(params, ctx.quot));
+
+        if (ctx.mode === "rebuild" && hasArray) {
+            ctx.fragments.push({
+                start: start,
+                end: end,
+                str: str,
+            });
+        } else if (ctx.mode === "remove" && hasArray) {
+            ctx.fragments.push({
+                start: start,
+                end: end,
+                str: "",
+            });
+        } else if (is.someof(ctx.mode, ["add", "rebuild"]) && !hasArray) {
+            ctx.fragments.push({
+                start: posAfterFunctionDeclaration,
+                end: posAfterFunctionDeclaration,
+                str: str,
+            });
         }
     }
 }
@@ -1881,7 +2099,7 @@ window.annotate = function ngAnnotate(src, options) {
     // Fix Program node range (https://code.google.com/p/esprima/issues/detail?id=541)
     ast.range[0] = 0;
 
-    // append a dummy-node to ast to catch any remaining triggers
+    // append a dummy-node to ast so that lut.findNodeFromPos(lastPos) returns something
     ast.body.push({
         type: "DebuggerStatement",
         range: [ast.range[1], ast.range[1]],
@@ -1896,10 +2114,6 @@ window.annotate = function ngAnnotate(src, options) {
     // fragments array, later sent to alter in one shot
     var fragments = [];
 
-    // triggers contains functions to trigger when traverse hits the
-    // first node at (or after) a certain pos
-    var triggers = new Heap();
-
     // suspects is built up with suspect nodes by match.
     // A suspect node will get annotations added / removed if it
     // fulfills the arrayexpression or functionexpression look,
@@ -1907,6 +2121,10 @@ window.annotate = function ngAnnotate(src, options) {
     // module definition) - alternatively is forced to ignore
     // context with node.$always = true
     var suspects = [];
+
+    var lut = new Lut(ast, src);
+
+    scopeTools.setupScopeAndReferences(ast);
 
     var ctx = {
         mode: mode,
@@ -1918,8 +2136,8 @@ window.annotate = function ngAnnotate(src, options) {
         re: re,
         comments: comments,
         fragments: fragments,
-        triggers: triggers,
         suspects: suspects,
+        lut: lut,
         isFunctionExpressionWithArgs: isFunctionExpressionWithArgs,
         isFunctionDeclarationWithArgs: isFunctionDeclarationWithArgs,
         isAnnotatedArray: isAnnotatedArray,
@@ -1940,7 +2158,7 @@ window.annotate = function ngAnnotate(src, options) {
     }
     var matchPluginsOrNull = (plugins.length === 0 ? null : matchPlugins);
 
-    ngInjectComments.init(ctx);
+    ngInject.inspectComments(ctx);
     plugins.forEach(function(plugin) {
         plugin.init(ctx);
     });
@@ -1952,13 +2170,9 @@ window.annotate = function ngAnnotate(src, options) {
         if (node.type === "CallExpression") {
             callerIds.push(node);
             recentCaller = node;
+            ngInject.inspectCallExpression(node, ctx);
         }
 
-        var pos = node.range[0];
-        while (pos >= triggers.pos) {
-            var trigger = triggers.getAndRemoveNext();
-            trigger.fn.call(null, node, trigger.ctx);
-        }
     }, post: function(node) {
         if (node === recentCaller) {
             callerIds.pop();
@@ -1995,33 +2209,71 @@ window.annotate = function ngAnnotate(src, options) {
     return result;
 }
 
-},{"./generate-sourcemap":8,"./heap":9,"./nginject-comments":11,"alter":12,"esprima":13,"ordered-ast-traverse":15,"simple-is":18}],11:[function(require,module,exports){
+},{"./generate-sourcemap":8,"./lut":9,"./nginject":11,"./scopetools":13,"alter":14,"assert":1,"esprima":15,"ordered-ast-traverse":17,"os":5,"simple-fmt":18,"simple-is":19}],11:[function(require,module,exports){
+// nginject-comments.js
+// MIT licensed, see LICENSE file
+// Copyright (c) 2013-2014 Olov Lassus <olov.lassus@gmail.com>
+
 "use strict";
 
-var os = require("os");
 var is = require("simple-is");
 var fmt = require("simple-fmt");
 
 module.exports = {
-    init: ngInjectCommentsInit,
+    inspectComments: inspectComments,
+    inspectCallExpression: inspectCallExpression,
 };
 
-function ngInjectCommentsInit(ctx) {
+function inspectCallExpression(node, ctx) {
+    if (node.type === "CallExpression" && node.callee.type === "Identifier" && node.callee.name === "ngInject" && node.arguments.length === 1) {
+        addSuspect(node.arguments[0], ctx);
+    }
+}
+
+function inspectComments(ctx) {
     var comments = ctx.comments;
-    var triggers = [];
     for (var i = 0; i < comments.length; i++) {
         var comment = comments[i];
         var pos = comment.value.indexOf("@ngInject");
-        if (pos >= 0) {
-            triggers.push({
-                pos: comment.range[1],
-                fn: visitNodeFollowingNgInjectComment,
-                ctx: ctx,
-            });
+        if (pos === -1) {
+            continue;
         }
-    }
 
-    ctx.triggers.addMany(triggers);
+        var target = ctx.lut.findNodeFromPos(comment.range[1]);
+        if (!target) {
+            continue;
+        }
+
+        addSuspect(target, ctx);
+    }
+}
+
+function addSuspect(target, ctx) {
+    if (target.type === "ObjectExpression") {
+        // /*@ngInject*/ {f1: function(a), .., {f2: function(b)}}
+        addObjectExpression(target, ctx);
+    } else if (target.type === "AssignmentExpression" && target.right.type === "ObjectExpression") {
+        // /*@ngInject*/ f(x.y = {f1: function(a), .., {f2: function(b)}})
+        addObjectExpression(target.right, ctx);
+    } else if (target.type === "ExpressionStatement" && target.expression.type === "AssignmentExpression" && target.expression.right.type === "ObjectExpression") {
+        // /*@ngInject*/ x.y = {f1: function(a), .., {f2: function(b)}}
+        addObjectExpression(target.expression.right, ctx);
+    } else if (target.type === "VariableDeclaration" && target.declarations.length === 1 && target.declarations[0].init && target.declarations[0].init.type === "ObjectExpression") {
+        // /*@ngInject*/ var x = {f1: function(a), .., {f2: function(b)}}
+        addObjectExpression(target.declarations[0].init, ctx);
+    } else if (target.type === "Property") {
+        // {/*@ngInject*/ justthisone: function(a), ..}
+        ctx.addModuleContextIndependentSuspect(target.value, ctx);
+    } else {
+        // /*@ngInject*/ function(a) {}
+        ctx.addModuleContextIndependentSuspect(target, ctx);
+    }
+}
+
+function addObjectExpression(node, ctx) {
+    nestedObjectValues(node).forEach(function(n) {
+        ctx.addModuleContextIndependentSuspect(n, ctx);
+    });
 }
 
 function nestedObjectValues(node, res) {
@@ -2039,89 +2291,349 @@ function nestedObjectValues(node, res) {
     return res;
 }
 
-function visitNodeFollowingNgInjectComment(node, ctx) {
-    // handle most common case: /*@ngInject*/ prepended to an array or function expression
-    // (or call expression, in case of IIFE jumping)
-    if (node.type === "ArrayExpression" || node.type === "FunctionExpression" || node.type === "CallExpression") {
-        ctx.addModuleContextIndependentSuspect(node, ctx);
-        return;
-    }
+},{"simple-fmt":18,"simple-is":19}],12:[function(require,module,exports){
+// scope.js
+// MIT licensed, see LICENSE file
+// Copyright (c) 2013-2014 Olov Lassus <olov.lassus@gmail.com>
 
-    if (node.type === "ObjectExpression") {
-        nestedObjectValues(node).forEach(function(n) {
-            ctx.addModuleContextIndependentSuspect(n, ctx);
-        });
-        return;
-    }
+"use strict";
 
-    // /*@ngInject*/ var foo = function($scope) {} and
-    // /*@ngInject*/ function foo($scope) {}
-    var d0 = null;
-    var nr1 = node.range[1];
-    if (node.type === "VariableDeclaration" && node.declarations.length === 1 &&
-        (d0 = node.declarations[0]).init && ctx.isFunctionExpressionWithArgs(d0.init)) {
-        var isSemicolonTerminated = (ctx.src[nr1 - 1] === ";");
-        addRemoveInjectArray(d0.init.params, isSemicolonTerminated ? nr1 : d0.init.range[1], d0.id.name);
-    } else if (ctx.isFunctionDeclarationWithArgs(node)) {
-        addRemoveInjectArray(node.params, nr1, node.id.name);
-    } else if (node.type === "ExpressionStatement" && node.expression.type === "AssignmentExpression" &&
-        ctx.isFunctionExpressionWithArgs(node.expression.right)) {
-        var isSemicolonTerminated$0 = (ctx.src[nr1 - 1] === ";");
-        var name = ctx.srcForRange(node.expression.left.range);
-        addRemoveInjectArray(node.expression.right.params, isSemicolonTerminated$0 ? nr1 : node.expression.right.range[1], name);
-    }
+var assert = require("assert");
+var stringmap = require("stringmap");
+var stringset = require("stringset");
+var is = require("simple-is");
+var fmt = require("simple-fmt");
 
-    function getIndent(pos) {
-        var src = ctx.src;
-        var lineStart = src.lastIndexOf("\n", pos - 1) + 1;
-        var i = lineStart;
-        for (; src[i] === " " || src[i] === "\t"; i++) {
-        }
-        return src.slice(lineStart, i);
-    }
+function Scope(args) {
+    assert(is.someof(args.kind, ["hoist", "block", "catch-block"]));
+    assert(is.object(args.node));
+    assert(args.parent === null || is.object(args.parent));
 
-    function addRemoveInjectArray(params, posAfterFunctionDeclaration, name) {
-        var indent = getIndent(posAfterFunctionDeclaration);
-        var str = fmt("{0}{1}{2}.$inject = {3};", os.EOL, indent, name, ctx.stringify(params, ctx.quot));
+    // kind === "hoist": function scopes, program scope, injected globals
+    // kind === "block": ES6 block scopes
+    // kind === "catch-block": catch block scopes
+    this.kind = args.kind;
 
-        ctx.triggers.add({
-            pos: posAfterFunctionDeclaration,
-            fn: visitNodeFollowingFunctionDeclaration,
-        });
+    // the AST node the block corresponds to
+    this.node = args.node;
 
-        function visitNodeFollowingFunctionDeclaration(nextNode) {
-            var assignment = nextNode.expression;
-            var lvalue;
-            var hasInjectArray = (nextNode.type === "ExpressionStatement" && assignment.type === "AssignmentExpression" &&
-                assignment.operator === "=" &&
-                (lvalue = assignment.left).type === "MemberExpression" &&
-                lvalue.computed === false && ctx.srcForRange(lvalue.object.range) === name && lvalue.property.name === "$inject");
+    // parent scope
+    this.parent = args.parent;
 
-            if (ctx.mode === "rebuild" && hasInjectArray) {
-                ctx.fragments.push({
-                    start: posAfterFunctionDeclaration,
-                    end: nextNode.range[1],
-                    str: str,
-                });
-            } else if (ctx.mode === "remove" && hasInjectArray) {
-                ctx.fragments.push({
-                    start: posAfterFunctionDeclaration,
-                    end: nextNode.range[1],
-                    str: "",
-                });
-            } else if (is.someof(ctx.mode, ["add", "rebuild"]) && !hasInjectArray) {
-                ctx.fragments.push({
-                    start: posAfterFunctionDeclaration,
-                    end: posAfterFunctionDeclaration,
-                    str: str,
-                });
-            }
-        }
+    // children scopes for easier traversal (populated internally)
+    this.children = [];
+
+    // scope declarations. decls[variable_name] = {
+    //     kind: "fun" for functions,
+    //           "param" for function parameters,
+    //           "caught" for catch parameter
+    //           "var",
+    //           "const",
+    //           "let"
+    //     node: the AST node the declaration corresponds to
+    //     from: source code index from which it is visible at earliest
+    //           (only stored for "const", "let" [and "var"] nodes)
+    // }
+    this.decls = stringmap();
+
+    // names of all variables declared outside this hoist scope but
+    // referenced in this scope (immediately or in child).
+    // only stored on hoist scopes for efficiency
+    // (because we currently generate lots of empty block scopes)
+    this.propagates = (this.kind === "hoist" ? stringset() : null);
+
+    // scopes register themselves with their parents for easier traversal
+    if (this.parent) {
+        this.parent.children.push(this);
     }
 }
 
+Scope.prototype.print = function(indent) {
+    indent = indent || 0;
+    var scope = this;
+    var names = this.decls.keys().map(function(name) {
+        return fmt("{0} [{1}]", name, scope.decls.get(name).kind);
+    }).join(", ");
+    var propagates = this.propagates ? this.propagates.items().join(", ") : "";
+    console.log(fmt("{0}{1}: {2}. propagates: {3}", fmt.repeat(" ", indent), this.node.type, names, propagates));
+    this.children.forEach(function(c) {
+        c.print(indent + 2);
+    });
+};
 
-},{"os":5,"simple-fmt":17,"simple-is":18}],12:[function(require,module,exports){
+Scope.prototype.add = function(name, kind, node, referableFromPos) {
+    assert(is.someof(kind, ["fun", "param", "var", "caught", "const", "let"]));
+
+    function isConstLet(kind) {
+        return is.someof(kind, ["const", "let"]);
+    }
+
+    var scope = this;
+
+    // search nearest hoist-scope for fun, param and var's
+    // const, let and caught variables go directly in the scope (which may be hoist, block or catch-block)
+    if (is.someof(kind, ["fun", "param", "var"])) {
+        while (scope.kind !== "hoist") {
+//            if (scope.decls.has(name) && isConstLet(scope.decls.get(name).kind)) { // could be caught
+//                return error(getline(node), "{0} is already declared", name);
+//            }
+            scope = scope.parent;
+        }
+    }
+    // name exists in scope and either new or existing kind is const|let => error
+//    if (scope.decls.has(name) && (isConstLet(scope.decls.get(name).kind) || isConstLet(kind))) {
+//        return error(getline(node), "{0} is already declared", name);
+//    }
+
+    var declaration = {
+        kind: kind,
+        node: node,
+    };
+    if (referableFromPos) {
+        assert(is.someof(kind, ["var", "const", "let"]));
+        declaration.from = referableFromPos;
+    }
+    scope.decls.set(name, declaration);
+};
+
+Scope.prototype.getKind = function(name) {
+    assert(is.string(name));
+    var decl = this.decls.get(name);
+    return decl ? decl.kind : null;
+};
+
+Scope.prototype.getNode = function(name) {
+    assert(is.string(name));
+    var decl = this.decls.get(name);
+    return decl ? decl.node : null;
+};
+
+Scope.prototype.getFromPos = function(name) {
+    assert(is.string(name));
+    var decl = this.decls.get(name);
+    return decl ? decl.from : null;
+};
+
+Scope.prototype.hasOwn = function(name) {
+    return this.decls.has(name);
+};
+
+Scope.prototype.remove = function(name) {
+    return this.decls.remove(name);
+};
+
+Scope.prototype.doesPropagate = function(name) {
+    return this.propagates.has(name);
+};
+
+Scope.prototype.markPropagates = function(name) {
+    this.propagates.add(name);
+};
+
+Scope.prototype.closestHoistScope = function() {
+    var scope = this;
+    while (scope.kind !== "hoist") {
+        scope = scope.parent;
+    }
+    return scope;
+};
+
+Scope.prototype.lookup = function(name) {
+    for (var scope = this; scope; scope = scope.parent) {
+        if (scope.decls.has(name)) {
+            return scope;
+        } else if (scope.kind === "hoist") {
+            scope.propagates.add(name);
+        }
+    }
+    return null;
+};
+
+module.exports = Scope;
+
+},{"assert":1,"simple-fmt":18,"simple-is":19,"stringmap":31,"stringset":32}],13:[function(require,module,exports){
+// scopetools.js
+// MIT licensed, see LICENSE file
+// Copyright (c) 2013-2014 Olov Lassus <olov.lassus@gmail.com>
+
+"use strict";
+
+var assert = require("assert");
+var traverse = require("ordered-ast-traverse");
+var Scope = require("./scope");
+var is = require("simple-is");
+
+module.exports = {
+    setupScopeAndReferences: setupScopeAndReferences,
+    isReference: isReference,
+};
+
+function setupScopeAndReferences(root) {
+    traverse(root, {pre: createScopes});
+    createTopScope(root.$scope);
+}
+
+function createScopes(node, parent) {
+    node.$parent = parent;
+    node.$scope = parent ? parent.$scope : null; // may be overridden
+
+    if (isNonFunctionBlock(node, parent)) {
+        // A block node is a scope unless parent is a function
+        node.$scope = new Scope({
+            kind: "block",
+            node: node,
+            parent: parent.$scope,
+        });
+
+    } else if (node.type === "VariableDeclaration") {
+        // Variable declarations names goes in current scope
+        node.declarations.forEach(function(declarator) {
+            var name = declarator.id.name;
+            node.$scope.add(name, node.kind, declarator.id, declarator.range[1]);
+        });
+
+    } else if (isFunction(node)) {
+        // Function is a scope, with params in it
+        // There's no block-scope under it
+
+        node.$scope = new Scope({
+            kind: "hoist",
+            node: node,
+            parent: parent.$scope,
+        });
+
+        // function has a name
+        if (node.id) {
+            if (node.type === "FunctionDeclaration") {
+                // Function name goes in parent scope for declared functions
+                parent.$scope.add(node.id.name, "fun", node.id, null);
+            } else if (node.type === "FunctionExpression") {
+                // Function name goes in function's scope for named function expressions
+                node.$scope.add(node.id.name, "fun", node.id, null);
+            } else {
+                assert(false);
+            }
+        }
+
+        node.params.forEach(function(param) {
+            node.$scope.add(param.name, "param", param, null);
+        });
+
+    } else if (isForWithConstLet(node) || isForInOfWithConstLet(node)) {
+        // For(In/Of) loop with const|let declaration is a scope, with declaration in it
+        // There may be a block-scope under it
+        node.$scope = new Scope({
+            kind: "block",
+            node: node,
+            parent: parent.$scope,
+        });
+
+    } else if (node.type === "CatchClause") {
+        var identifier = node.param;
+
+        node.$scope = new Scope({
+            kind: "catch-block",
+            node: node,
+            parent: parent.$scope,
+        });
+        node.$scope.add(identifier.name, "caught", identifier, null);
+
+        // All hoist-scope keeps track of which variables that are propagated through,
+        // i.e. an reference inside the scope points to a declaration outside the scope.
+        // This is used to mark "taint" the name since adding a new variable in the scope,
+        // with a propagated name, would change the meaning of the existing references.
+        //
+        // catch(e) is special because even though e is a variable in its own scope,
+        // we want to make sure that catch(e){let e} is never transformed to
+        // catch(e){var e} (but rather var e$0). For that reason we taint the use of e
+        // in the closest hoist-scope, i.e. where var e$0 belongs.
+        node.$scope.closestHoistScope().markPropagates(identifier.name);
+
+    } else if (node.type === "Program") {
+        // Top-level program is a scope
+        // There's no block-scope under it
+        node.$scope = new Scope({
+            kind: "hoist",
+            node: node,
+            parent: null,
+        });
+    }
+}
+
+function createTopScope(programScope) {
+    function inject(obj) {
+        for (var name in obj) {
+            var writeable = obj[name];
+            var kind = (writeable ? "var" : "const");
+            if (topScope.hasOwn(name)) {
+                topScope.remove(name);
+            }
+            topScope.add(name, kind, {loc: {start: {line: -1}}}, -1);
+        }
+    }
+
+    var topScope = new Scope({
+        kind: "hoist",
+        node: {},
+        parent: null,
+    });
+
+    var complementary = {
+        undefined: false,
+        Infinity: false,
+        console: false,
+    };
+
+    inject(complementary);
+//    inject(jshint_vars.reservedVars);
+//    inject(jshint_vars.ecmaIdentifiers);
+
+    // link it in
+    programScope.parent = topScope;
+    topScope.children.push(programScope);
+
+    return topScope;
+}
+
+function isConstLet(kind) {
+    return kind === "const" || kind === "let";
+}
+
+function isNonFunctionBlock(node, parent) {
+    return node.type === "BlockStatement" && parent.type !== "FunctionDeclaration" && parent.type !== "FunctionExpression";
+}
+
+function isForWithConstLet(node) {
+    return node.type === "ForStatement" && node.init && node.init.type === "VariableDeclaration" && isConstLet(node.init.kind);
+}
+
+function isForInOfWithConstLet(node) {
+    return isForInOf(node) && node.left.type === "VariableDeclaration" && isConstLet(node.left.kind);
+}
+
+function isForInOf(node) {
+    return node.type === "ForInStatement" || node.type === "ForOfStatement";
+}
+
+function isFunction(node) {
+    return node.type === "FunctionDeclaration" || node.type === "FunctionExpression";
+}
+
+function isReference(node) {
+    var parent = node.$parent;
+    return node.$refToScope ||
+        node.type === "Identifier" &&
+            !(parent.type === "VariableDeclarator" && parent.id === node) && // var|let|const $
+            !(parent.type === "MemberExpression" && parent.computed === false && parent.property === node) && // obj.$
+            !(parent.type === "Property" && parent.key === node) && // {$: ...}
+            !(parent.type === "LabeledStatement" && parent.label === node) && // $: ...
+            !(parent.type === "CatchClause" && parent.param === node) && // catch($)
+            !(isFunction(parent) && parent.id === node) && // function $(..
+            !(isFunction(parent) && is.someof(node, parent.params)) && // function f($)..
+            true;
+}
+
+},{"./scope":12,"assert":1,"ordered-ast-traverse":17,"simple-is":19}],14:[function(require,module,exports){
 // alter.js
 // MIT licensed, see LICENSE file
 // Copyright (c) 2013 Olov Lassus <olov.lassus@gmail.com>
@@ -2168,7 +2680,7 @@ if (typeof module !== "undefined" && typeof module.exports !== "undefined") {
     module.exports = alter;
 }
 
-},{"assert":1,"stable":29}],13:[function(require,module,exports){
+},{"assert":1,"stable":30}],15:[function(require,module,exports){
 /*
   Copyright (C) 2013 Ariya Hidayat <ariya.hidayat@gmail.com>
   Copyright (C) 2013 Thaddee Tyl <thaddee.tyl@gmail.com>
@@ -5926,7 +6438,7 @@ parseStatement: true, parseSourceElement: true */
 }));
 /* vim: set sw=4 ts=4 et tw=80 : */
 
-},{}],14:[function(require,module,exports){
+},{}],16:[function(require,module,exports){
 // ordered-esprima-props.js
 // MIT licensed, see LICENSE file
 // Copyright (c) 2014 Olov Lassus <olov.lassus@gmail.com>
@@ -6005,7 +6517,7 @@ module.exports = (function() {
     };
 })();
 
-},{}],15:[function(require,module,exports){
+},{}],17:[function(require,module,exports){
 // ordered-ast-traverse.js
 // MIT licensed, see LICENSE file
 // Copyright (c) 2014 Olov Lassus <olov.lassus@gmail.com>
@@ -6066,181 +6578,7 @@ if (typeof module !== "undefined" && typeof module.exports !== "undefined") {
     module.exports = traverse;
 }
 
-},{"ordered-esprima-props":14}],16:[function(require,module,exports){
-/**
- * Expose `PriorityQueue`.
- */
-module.exports = PriorityQueue;
-
-/**
- * Initializes a new empty `PriorityQueue` with the given `comparator(a, b)`
- * function, uses `.DEFAULT_COMPARATOR()` when no function is provided.
- *
- * The comparator function must return a positive number when `a > b`, 0 when
- * `a == b` and a negative number when `a < b`.
- *
- * @param {Function}
- * @return {PriorityQueue}
- * @api public
- */
-function PriorityQueue(comparator) {
-  this._comparator = comparator || PriorityQueue.DEFAULT_COMPARATOR;
-  this._elements = [];
-}
-
-/**
- * Compares `a` and `b`, when `a > b` it returns a positive number, when
- * it returns 0 and when `a < b` it returns a negative number.
- *
- * @param {String|Number} a
- * @param {String|Number} b
- * @return {Number}
- * @api public
- */
-PriorityQueue.DEFAULT_COMPARATOR = function(a, b) {
-  if (a instanceof Number && b instanceof Number) {
-    return a - b;
-  } else {
-    a = a.toString();
-    b = b.toString();
-
-    if (a == b) return 0;
-
-    return (a > b) ? 1 : -1;
-  }
-};
-
-/**
- * Returns whether the priority queue is empty or not.
- *
- * @return {Boolean}
- * @api public
- */
-PriorityQueue.prototype.isEmpty = function() {
-  return this.size() === 0;
-};
-
-/**
- * Peeks at the top element of the priority queue.
- *
- * @return {Object}
- * @throws {Error} when the queue is empty.
- * @api public
- */
-PriorityQueue.prototype.peek = function() {
-  if (this.isEmpty()) throw new Error('PriorityQueue is empty');
-
-  return this._elements[0];
-};
-
-/**
- * Dequeues the top element of the priority queue.
- *
- * @return {Object}
- * @throws {Error} when the queue is empty.
- * @api public
- */
-PriorityQueue.prototype.deq = function() {
-  var first = this.peek();
-  var last = this._elements.pop();
-  var size = this.size();
-
-  if (size === 0) return first;
-
-  this._elements[0] = last;
-  var current = 0;
-
-  while (current < size) {
-    var largest = current;
-    var left = (2 * current) + 1;
-    var right = (2 * current) + 2;
-
-    if (left < size && this._compare(left, largest) > 0) {
-      largest = left;
-    }
-
-    if (right < size && this._compare(right, largest) > 0) {
-      largest = right;
-    }
-
-    if (largest === current) break;
-
-    this._swap(largest, current);
-    current = largest;
-  }
-
-  return first;
-};
-
-/**
- * Enqueues the `element` at the priority queue and returns its new size.
- *
- * @param {Object} element
- * @return {Number}
- * @api public
- */
-PriorityQueue.prototype.enq = function(element) {
-  var size = this._elements.push(element);
-  var current = size - 1;
-
-  while (current > 0) {
-    var parent = Math.floor((current - 1) / 2);
-
-    if (this._compare(current, parent) < 0) break;
-
-    this._swap(parent, current);
-    current = parent;
-  }
-
-  return size;
-};
-
-/**
- * Returns the size of the priority queue.
- *
- * @return {Number}
- * @api public
- */
-PriorityQueue.prototype.size = function() {
-  return this._elements.length;
-};
-
-/**
- *  Iterates over queue elements
- *
- *  @param {Function} fn
- */
-PriorityQueue.prototype.forEach = function(fn) {
-  return this._elements.forEach(fn);
-};
-
-/**
- * Compares the values at position `a` and `b` in the priority queue using its
- * comparator function.
- *
- * @param {Number} a
- * @param {Number} b
- * @return {Number}
- * @api private
- */
-PriorityQueue.prototype._compare = function(a, b) {
-  return this._comparator(this._elements[a], this._elements[b]);
-};
-
-/**
- * Swaps the values at position `a` and `b` in the priority queue.
- *
- * @param {Number} a
- * @param {Number} b
- * @api private
- */
-PriorityQueue.prototype._swap = function(a, b) {
-  var aux = this._elements[a];
-  this._elements[a] = this._elements[b];
-  this._elements[b] = aux;
-};
-
-},{}],17:[function(require,module,exports){
+},{"ordered-esprima-props":16}],18:[function(require,module,exports){
 // simple-fmt.js
 // MIT licensed, see LICENSE file
 // Copyright (c) 2013 Olov Lassus <olov.lassus@gmail.com>
@@ -6275,7 +6613,7 @@ if (typeof module !== "undefined" && typeof module.exports !== "undefined") {
     module.exports = fmt;
 }
 
-},{}],18:[function(require,module,exports){
+},{}],19:[function(require,module,exports){
 // simple-is.js
 // MIT licensed, see LICENSE file
 // Copyright (c) 2013 Olov Lassus <olov.lassus@gmail.com>
@@ -6333,7 +6671,7 @@ if (typeof module !== "undefined" && typeof module.exports !== "undefined") {
     module.exports = is;
 }
 
-},{}],19:[function(require,module,exports){
+},{}],20:[function(require,module,exports){
 /*
  * Copyright 2009-2011 Mozilla Foundation and contributors
  * Licensed under the New BSD license. See LICENSE.txt or:
@@ -6343,7 +6681,7 @@ exports.SourceMapGenerator = require('./source-map/source-map-generator').Source
 exports.SourceMapConsumer = require('./source-map/source-map-consumer').SourceMapConsumer;
 exports.SourceNode = require('./source-map/source-node').SourceNode;
 
-},{"./source-map/source-map-consumer":24,"./source-map/source-map-generator":25,"./source-map/source-node":26}],20:[function(require,module,exports){
+},{"./source-map/source-map-consumer":25,"./source-map/source-map-generator":26,"./source-map/source-node":27}],21:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -6442,7 +6780,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"./util":27,"amdefine":28}],21:[function(require,module,exports){
+},{"./util":28,"amdefine":29}],22:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -6588,7 +6926,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"./base64":22,"amdefine":28}],22:[function(require,module,exports){
+},{"./base64":23,"amdefine":29}],23:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -6632,7 +6970,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"amdefine":28}],23:[function(require,module,exports){
+},{"amdefine":29}],24:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -6715,7 +7053,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"amdefine":28}],24:[function(require,module,exports){
+},{"amdefine":29}],25:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -7195,7 +7533,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"./array-set":20,"./base64-vlq":21,"./binary-search":23,"./util":27,"amdefine":28}],25:[function(require,module,exports){
+},{"./array-set":21,"./base64-vlq":22,"./binary-search":24,"./util":28,"amdefine":29}],26:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -7600,7 +7938,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"./array-set":20,"./base64-vlq":21,"./util":27,"amdefine":28}],26:[function(require,module,exports){
+},{"./array-set":21,"./base64-vlq":22,"./util":28,"amdefine":29}],27:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -8010,7 +8348,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"./source-map-generator":25,"./util":27,"amdefine":28}],27:[function(require,module,exports){
+},{"./source-map-generator":26,"./util":28,"amdefine":29}],28:[function(require,module,exports){
 /* -*- Mode: js; js-indent-level: 2; -*- */
 /*
  * Copyright 2011 Mozilla Foundation and contributors
@@ -8331,7 +8669,7 @@ define(function (require, exports, module) {
 
 });
 
-},{"amdefine":28}],28:[function(require,module,exports){
+},{"amdefine":29}],29:[function(require,module,exports){
 (function (process,__filename){
 /** vim: et:ts=4:sw=4:sts=4
  * @license amdefine 0.1.0 Copyright (c) 2011, The Dojo Foundation All Rights Reserved.
@@ -8634,7 +8972,7 @@ function amdefine(module, requireFn) {
 module.exports = amdefine;
 
 }).call(this,require('_process'),"/node_modules/ng-annotate/node_modules/source-map/node_modules/amdefine/amdefine.js")
-},{"_process":7,"path":6}],29:[function(require,module,exports){
+},{"_process":7,"path":6}],30:[function(require,module,exports){
 //! stable.js 0.1.5, https://github.com/Two-Screen/stable
 //! © 2014 Angry Bytes and contributors. MIT licensed.
 
@@ -8746,5 +9084,434 @@ else {
 }
 
 })();
+
+},{}],31:[function(require,module,exports){
+// stringmap.js
+// MIT licensed, see LICENSE file
+// Copyright (c) 2013 Olov Lassus <olov.lassus@gmail.com>
+
+var StringMap = (function() {
+    "use strict";
+
+    // to save us a few characters
+    var hasOwnProperty = Object.prototype.hasOwnProperty;
+
+    var create = (function() {
+        function hasOwnEnumerableProps(obj) {
+            for (var prop in obj) {
+                if (hasOwnProperty.call(obj, prop)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        // FF <= 3.6:
+        // o = {}; o.hasOwnProperty("__proto__" or "__count__" or "__parent__") => true
+        // o = {"__proto__": null}; Object.prototype.hasOwnProperty.call(o, "__proto__" or "__count__" or "__parent__") => false
+        function hasOwnPollutedProps(obj) {
+            return hasOwnProperty.call(obj, "__count__") || hasOwnProperty.call(obj, "__parent__");
+        }
+
+        var useObjectCreate = false;
+        if (typeof Object.create === "function") {
+            if (!hasOwnEnumerableProps(Object.create(null))) {
+                useObjectCreate = true;
+            }
+        }
+        if (useObjectCreate === false) {
+            if (hasOwnEnumerableProps({})) {
+                throw new Error("StringMap environment error 0, please file a bug at https://github.com/olov/stringmap/issues");
+            }
+        }
+        // no throw yet means we can create objects without own enumerable props (safe-guard against VMs and shims)
+
+        var o = (useObjectCreate ? Object.create(null) : {});
+        var useProtoClear = false;
+        if (hasOwnPollutedProps(o)) {
+            o.__proto__ = null;
+            if (hasOwnEnumerableProps(o) || hasOwnPollutedProps(o)) {
+                throw new Error("StringMap environment error 1, please file a bug at https://github.com/olov/stringmap/issues");
+            }
+            useProtoClear = true;
+        }
+        // no throw yet means we can create objects without own polluted props (safe-guard against VMs and shims)
+
+        return function() {
+            var o = (useObjectCreate ? Object.create(null) : {});
+            if (useProtoClear) {
+                o.__proto__ = null;
+            }
+            return o;
+        };
+    })();
+
+    // stringmap ctor
+    function stringmap(optional_object) {
+        // use with or without new
+        if (!(this instanceof stringmap)) {
+            return new stringmap(optional_object);
+        }
+        this.obj = create();
+        this.hasProto = false; // false (no __proto__ key) or true (has __proto__ key)
+        this.proto = undefined; // value for __proto__ key when hasProto is true, undefined otherwise
+
+        if (optional_object) {
+            this.setMany(optional_object);
+        }
+    };
+
+    // primitive methods that deals with data representation
+    stringmap.prototype.has = function(key) {
+        // The type-check of key in has, get, set and delete is important because otherwise an object
+        // {toString: function() { return "__proto__"; }} can avoid the key === "__proto__" test.
+        // The alternative to type-checking would be to force string conversion, i.e. key = String(key);
+        if (typeof key !== "string") {
+            throw new Error("StringMap expected string key");
+        }
+        return (key === "__proto__" ?
+            this.hasProto :
+            hasOwnProperty.call(this.obj, key));
+    };
+
+    stringmap.prototype.get = function(key) {
+        if (typeof key !== "string") {
+            throw new Error("StringMap expected string key");
+        }
+        return (key === "__proto__" ?
+            this.proto :
+            (hasOwnProperty.call(this.obj, key) ? this.obj[key] : undefined));
+    };
+
+    stringmap.prototype.set = function(key, value) {
+        if (typeof key !== "string") {
+            throw new Error("StringMap expected string key");
+        }
+        if (key === "__proto__") {
+            this.hasProto = true;
+            this.proto = value;
+        } else {
+            this.obj[key] = value;
+        }
+    };
+
+    stringmap.prototype.remove = function(key) {
+        if (typeof key !== "string") {
+            throw new Error("StringMap expected string key");
+        }
+        var didExist = this.has(key);
+        if (key === "__proto__") {
+            this.hasProto = false;
+            this.proto = undefined;
+        } else {
+            delete this.obj[key];
+        }
+        return didExist;
+    };
+
+    // alias remove to delete but beware:
+    // sm.delete("key"); // OK in ES5 and later
+    // sm['delete']("key"); // OK in all ES versions
+    // sm.remove("key"); // OK in all ES versions
+    stringmap.prototype['delete'] = stringmap.prototype.remove;
+
+    stringmap.prototype.isEmpty = function() {
+        for (var key in this.obj) {
+            if (hasOwnProperty.call(this.obj, key)) {
+                return false;
+            }
+        }
+        return !this.hasProto;
+    };
+
+    stringmap.prototype.size = function() {
+        var len = 0;
+        for (var key in this.obj) {
+            if (hasOwnProperty.call(this.obj, key)) {
+                ++len;
+            }
+        }
+        return (this.hasProto ? len + 1 : len);
+    };
+
+    stringmap.prototype.keys = function() {
+        var keys = [];
+        for (var key in this.obj) {
+            if (hasOwnProperty.call(this.obj, key)) {
+                keys.push(key);
+            }
+        }
+        if (this.hasProto) {
+            keys.push("__proto__");
+        }
+        return keys;
+    };
+
+    stringmap.prototype.values = function() {
+        var values = [];
+        for (var key in this.obj) {
+            if (hasOwnProperty.call(this.obj, key)) {
+                values.push(this.obj[key]);
+            }
+        }
+        if (this.hasProto) {
+            values.push(this.proto);
+        }
+        return values;
+    };
+
+    stringmap.prototype.items = function() {
+        var items = [];
+        for (var key in this.obj) {
+            if (hasOwnProperty.call(this.obj, key)) {
+                items.push([key, this.obj[key]]);
+            }
+        }
+        if (this.hasProto) {
+            items.push(["__proto__", this.proto]);
+        }
+        return items;
+    };
+
+
+    // methods that rely on the above primitives
+    stringmap.prototype.setMany = function(object) {
+        if (object === null || (typeof object !== "object" && typeof object !== "function")) {
+            throw new Error("StringMap expected Object");
+        }
+        for (var key in object) {
+            if (hasOwnProperty.call(object, key)) {
+                this.set(key, object[key]);
+            }
+        }
+        return this;
+    };
+
+    stringmap.prototype.merge = function(other) {
+        var keys = other.keys();
+        for (var i = 0; i < keys.length; i++) {
+            var key = keys[i];
+            this.set(key, other.get(key));
+        }
+        return this;
+    };
+
+    stringmap.prototype.map = function(fn) {
+        var keys = this.keys();
+        for (var i = 0; i < keys.length; i++) {
+            var key = keys[i];
+            keys[i] = fn(this.get(key), key); // re-use keys array for results
+        }
+        return keys;
+    };
+
+    stringmap.prototype.forEach = function(fn) {
+        var keys = this.keys();
+        for (var i = 0; i < keys.length; i++) {
+            var key = keys[i];
+            fn(this.get(key), key);
+        }
+    };
+
+    stringmap.prototype.clone = function() {
+        var other = stringmap();
+        return other.merge(this);
+    };
+
+    stringmap.prototype.toString = function() {
+        var self = this;
+        return "{" + this.keys().map(function(key) {
+            return JSON.stringify(key) + ":" + JSON.stringify(self.get(key));
+        }).join(",") + "}";
+    };
+
+    return stringmap;
+})();
+
+if (typeof module !== "undefined" && typeof module.exports !== "undefined") {
+    module.exports = StringMap;
+}
+
+},{}],32:[function(require,module,exports){
+// stringset.js
+// MIT licensed, see LICENSE file
+// Copyright (c) 2013 Olov Lassus <olov.lassus@gmail.com>
+
+var StringSet = (function() {
+    "use strict";
+
+    // to save us a few characters
+    var hasOwnProperty = Object.prototype.hasOwnProperty;
+
+    var create = (function() {
+        function hasOwnEnumerableProps(obj) {
+            for (var prop in obj) {
+                if (hasOwnProperty.call(obj, prop)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // FF <= 3.6:
+        // o = {}; o.hasOwnProperty("__proto__" or "__count__" or "__parent__") => true
+        // o = {"__proto__": null}; Object.prototype.hasOwnProperty.call(o, "__proto__" or "__count__" or "__parent__") => false
+        function hasOwnPollutedProps(obj) {
+            return hasOwnProperty.call(obj, "__count__") || hasOwnProperty.call(obj, "__parent__");
+        }
+
+        var useObjectCreate = false;
+        if (typeof Object.create === "function") {
+            if (!hasOwnEnumerableProps(Object.create(null))) {
+                useObjectCreate = true;
+            }
+        }
+        if (useObjectCreate === false) {
+            if (hasOwnEnumerableProps({})) {
+                throw new Error("StringSet environment error 0, please file a bug at https://github.com/olov/stringset/issues");
+            }
+        }
+        // no throw yet means we can create objects without own enumerable props (safe-guard against VMs and shims)
+
+        var o = (useObjectCreate ? Object.create(null) : {});
+        var useProtoClear = false;
+        if (hasOwnPollutedProps(o)) {
+            o.__proto__ = null;
+            if (hasOwnEnumerableProps(o) || hasOwnPollutedProps(o)) {
+                throw new Error("StringSet environment error 1, please file a bug at https://github.com/olov/stringset/issues");
+            }
+            useProtoClear = true;
+        }
+        // no throw yet means we can create objects without own polluted props (safe-guard against VMs and shims)
+
+        return function() {
+            var o = (useObjectCreate ? Object.create(null) : {});
+            if (useProtoClear) {
+                o.__proto__ = null;
+            }
+            return o;
+        };
+    })();
+
+    // stringset ctor
+    function stringset(optional_array) {
+        // use with or without new
+        if (!(this instanceof stringset)) {
+            return new stringset(optional_array);
+        }
+        this.obj = create();
+        this.hasProto = false; // false (no __proto__ item) or true (has __proto__ item)
+
+        if (optional_array) {
+            this.addMany(optional_array);
+        }
+    };
+
+    // primitive methods that deals with data representation
+    stringset.prototype.has = function(item) {
+        // The type-check of item in has, get, set and delete is important because otherwise an object
+        // {toString: function() { return "__proto__"; }} can avoid the item === "__proto__" test.
+        // The alternative to type-checking would be to force string conversion, i.e. item = String(item);
+        if (typeof item !== "string") {
+            throw new Error("StringSet expected string item");
+        }
+        return (item === "__proto__" ?
+            this.hasProto :
+            hasOwnProperty.call(this.obj, item));
+    };
+
+    stringset.prototype.add = function(item) {
+        if (typeof item !== "string") {
+            throw new Error("StringSet expected string item");
+        }
+        if (item === "__proto__") {
+            this.hasProto = true;
+        } else {
+            this.obj[item] = true;
+        }
+    };
+
+    stringset.prototype.remove = function(item) {
+        if (typeof item !== "string") {
+            throw new Error("StringSet expected string item");
+        }
+        var didExist = this.has(item);
+        if (item === "__proto__") {
+            this.hasProto = false;
+        } else {
+            delete this.obj[item];
+        }
+        return didExist;
+    };
+
+    // alias remove to delete but beware:
+    // ss.delete("key"); // OK in ES5 and later
+    // ss['delete']("key"); // OK in all ES versions
+    // ss.remove("key"); // OK in all ES versions
+    stringset.prototype['delete'] = stringset.prototype.remove;
+
+    stringset.prototype.isEmpty = function() {
+        for (var item in this.obj) {
+            if (hasOwnProperty.call(this.obj, item)) {
+                return false;
+            }
+        }
+        return !this.hasProto;
+    };
+
+    stringset.prototype.size = function() {
+        var len = 0;
+        for (var item in this.obj) {
+            if (hasOwnProperty.call(this.obj, item)) {
+                ++len;
+            }
+        }
+        return (this.hasProto ? len + 1 : len);
+    };
+
+    stringset.prototype.items = function() {
+        var items = [];
+        for (var item in this.obj) {
+            if (hasOwnProperty.call(this.obj, item)) {
+                items.push(item);
+            }
+        }
+        if (this.hasProto) {
+            items.push("__proto__");
+        }
+        return items;
+    };
+
+
+    // methods that rely on the above primitives
+    stringset.prototype.addMany = function(items) {
+        if (!Array.isArray(items)) {
+            throw new Error("StringSet expected array");
+        }
+        for (var i = 0; i < items.length; i++) {
+            this.add(items[i]);
+        }
+        return this;
+    };
+
+    stringset.prototype.merge = function(other) {
+        this.addMany(other.items());
+        return this;
+    };
+
+    stringset.prototype.clone = function() {
+        var other = stringset();
+        return other.merge(this);
+    };
+
+    stringset.prototype.toString = function() {
+        return "{" + this.items().map(JSON.stringify).join(",") + "}";
+    };
+
+    return stringset;
+})();
+
+if (typeof module !== "undefined" && typeof module.exports !== "undefined") {
+    module.exports = StringSet;
+}
 
 },{}]},{},[10]);
