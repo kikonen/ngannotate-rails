@@ -43,7 +43,7 @@ Testing assets locally
 
 To allow testing precompiled assets locally in development environment.
 
-config/environments/development.yml
+config/environments/development.rb
 
     #
     # to allow testing assets:precompile in development environment
