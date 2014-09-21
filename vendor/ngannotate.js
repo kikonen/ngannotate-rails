@@ -360,14 +360,379 @@ var objectKeys = Object.keys || function (obj) {
   return keys;
 };
 
-},{"util/":3}],2:[function(require,module,exports){
+},{"util/":7}],2:[function(require,module,exports){
+if (typeof Object.create === 'function') {
+  // implementation from standard node.js 'util' module
+  module.exports = function inherits(ctor, superCtor) {
+    ctor.super_ = superCtor
+    ctor.prototype = Object.create(superCtor.prototype, {
+      constructor: {
+        value: ctor,
+        enumerable: false,
+        writable: true,
+        configurable: true
+      }
+    });
+  };
+} else {
+  // old school shim for old browsers
+  module.exports = function inherits(ctor, superCtor) {
+    ctor.super_ = superCtor
+    var TempCtor = function () {}
+    TempCtor.prototype = superCtor.prototype
+    ctor.prototype = new TempCtor()
+    ctor.prototype.constructor = ctor
+  }
+}
+
+},{}],3:[function(require,module,exports){
+exports.endianness = function () { return 'LE' };
+
+exports.hostname = function () {
+    if (typeof location !== 'undefined') {
+        return location.hostname
+    }
+    else return '';
+};
+
+exports.loadavg = function () { return [] };
+
+exports.uptime = function () { return 0 };
+
+exports.freemem = function () {
+    return Number.MAX_VALUE;
+};
+
+exports.totalmem = function () {
+    return Number.MAX_VALUE;
+};
+
+exports.cpus = function () { return [] };
+
+exports.type = function () { return 'Browser' };
+
+exports.release = function () {
+    if (typeof navigator !== 'undefined') {
+        return navigator.appVersion;
+    }
+    return '';
+};
+
+exports.networkInterfaces
+= exports.getNetworkInterfaces
+= function () { return {} };
+
+exports.arch = function () { return 'javascript' };
+
+exports.platform = function () { return 'browser' };
+
+exports.tmpdir = exports.tmpDir = function () {
+    return '/tmp';
+};
+
+exports.EOL = '\n';
+
+},{}],4:[function(require,module,exports){
+(function (process){
+// Copyright Joyent, Inc. and other Node contributors.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the
+// "Software"), to deal in the Software without restriction, including
+// without limitation the rights to use, copy, modify, merge, publish,
+// distribute, sublicense, and/or sell copies of the Software, and to permit
+// persons to whom the Software is furnished to do so, subject to the
+// following conditions:
+//
+// The above copyright notice and this permission notice shall be included
+// in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+// USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+// resolves . and .. elements in a path array with directory names there
+// must be no slashes, empty elements, or device names (c:\) in the array
+// (so also no leading and trailing slashes - it does not distinguish
+// relative and absolute paths)
+function normalizeArray(parts, allowAboveRoot) {
+  // if the path tries to go above the root, `up` ends up > 0
+  var up = 0;
+  for (var i = parts.length - 1; i >= 0; i--) {
+    var last = parts[i];
+    if (last === '.') {
+      parts.splice(i, 1);
+    } else if (last === '..') {
+      parts.splice(i, 1);
+      up++;
+    } else if (up) {
+      parts.splice(i, 1);
+      up--;
+    }
+  }
+
+  // if the path is allowed to go above the root, restore leading ..s
+  if (allowAboveRoot) {
+    for (; up--; up) {
+      parts.unshift('..');
+    }
+  }
+
+  return parts;
+}
+
+// Split a filename into [root, dir, basename, ext], unix version
+// 'root' is just a slash, or nothing.
+var splitPathRe =
+    /^(\/?|)([\s\S]*?)((?:\.{1,2}|[^\/]+?|)(\.[^.\/]*|))(?:[\/]*)$/;
+var splitPath = function(filename) {
+  return splitPathRe.exec(filename).slice(1);
+};
+
+// path.resolve([from ...], to)
+// posix version
+exports.resolve = function() {
+  var resolvedPath = '',
+      resolvedAbsolute = false;
+
+  for (var i = arguments.length - 1; i >= -1 && !resolvedAbsolute; i--) {
+    var path = (i >= 0) ? arguments[i] : process.cwd();
+
+    // Skip empty and invalid entries
+    if (typeof path !== 'string') {
+      throw new TypeError('Arguments to path.resolve must be strings');
+    } else if (!path) {
+      continue;
+    }
+
+    resolvedPath = path + '/' + resolvedPath;
+    resolvedAbsolute = path.charAt(0) === '/';
+  }
+
+  // At this point the path should be resolved to a full absolute path, but
+  // handle relative paths to be safe (might happen when process.cwd() fails)
+
+  // Normalize the path
+  resolvedPath = normalizeArray(filter(resolvedPath.split('/'), function(p) {
+    return !!p;
+  }), !resolvedAbsolute).join('/');
+
+  return ((resolvedAbsolute ? '/' : '') + resolvedPath) || '.';
+};
+
+// path.normalize(path)
+// posix version
+exports.normalize = function(path) {
+  var isAbsolute = exports.isAbsolute(path),
+      trailingSlash = substr(path, -1) === '/';
+
+  // Normalize the path
+  path = normalizeArray(filter(path.split('/'), function(p) {
+    return !!p;
+  }), !isAbsolute).join('/');
+
+  if (!path && !isAbsolute) {
+    path = '.';
+  }
+  if (path && trailingSlash) {
+    path += '/';
+  }
+
+  return (isAbsolute ? '/' : '') + path;
+};
+
+// posix version
+exports.isAbsolute = function(path) {
+  return path.charAt(0) === '/';
+};
+
+// posix version
+exports.join = function() {
+  var paths = Array.prototype.slice.call(arguments, 0);
+  return exports.normalize(filter(paths, function(p, index) {
+    if (typeof p !== 'string') {
+      throw new TypeError('Arguments to path.join must be strings');
+    }
+    return p;
+  }).join('/'));
+};
+
+
+// path.relative(from, to)
+// posix version
+exports.relative = function(from, to) {
+  from = exports.resolve(from).substr(1);
+  to = exports.resolve(to).substr(1);
+
+  function trim(arr) {
+    var start = 0;
+    for (; start < arr.length; start++) {
+      if (arr[start] !== '') break;
+    }
+
+    var end = arr.length - 1;
+    for (; end >= 0; end--) {
+      if (arr[end] !== '') break;
+    }
+
+    if (start > end) return [];
+    return arr.slice(start, end - start + 1);
+  }
+
+  var fromParts = trim(from.split('/'));
+  var toParts = trim(to.split('/'));
+
+  var length = Math.min(fromParts.length, toParts.length);
+  var samePartsLength = length;
+  for (var i = 0; i < length; i++) {
+    if (fromParts[i] !== toParts[i]) {
+      samePartsLength = i;
+      break;
+    }
+  }
+
+  var outputParts = [];
+  for (var i = samePartsLength; i < fromParts.length; i++) {
+    outputParts.push('..');
+  }
+
+  outputParts = outputParts.concat(toParts.slice(samePartsLength));
+
+  return outputParts.join('/');
+};
+
+exports.sep = '/';
+exports.delimiter = ':';
+
+exports.dirname = function(path) {
+  var result = splitPath(path),
+      root = result[0],
+      dir = result[1];
+
+  if (!root && !dir) {
+    // No dirname whatsoever
+    return '.';
+  }
+
+  if (dir) {
+    // It has a dirname, strip trailing slash
+    dir = dir.substr(0, dir.length - 1);
+  }
+
+  return root + dir;
+};
+
+
+exports.basename = function(path, ext) {
+  var f = splitPath(path)[2];
+  // TODO: make this comparison case-insensitive on windows?
+  if (ext && f.substr(-1 * ext.length) === ext) {
+    f = f.substr(0, f.length - ext.length);
+  }
+  return f;
+};
+
+
+exports.extname = function(path) {
+  return splitPath(path)[3];
+};
+
+function filter (xs, f) {
+    if (xs.filter) return xs.filter(f);
+    var res = [];
+    for (var i = 0; i < xs.length; i++) {
+        if (f(xs[i], i, xs)) res.push(xs[i]);
+    }
+    return res;
+}
+
+// String.prototype.substr - negative index don't work in IE8
+var substr = 'ab'.substr(-1) === 'b'
+    ? function (str, start, len) { return str.substr(start, len) }
+    : function (str, start, len) {
+        if (start < 0) start = str.length + start;
+        return str.substr(start, len);
+    }
+;
+
+}).call(this,require('_process'))
+},{"_process":5}],5:[function(require,module,exports){
+// shim for using process in browser
+
+var process = module.exports = {};
+
+process.nextTick = (function () {
+    var canSetImmediate = typeof window !== 'undefined'
+    && window.setImmediate;
+    var canPost = typeof window !== 'undefined'
+    && window.postMessage && window.addEventListener
+    ;
+
+    if (canSetImmediate) {
+        return function (f) { return window.setImmediate(f) };
+    }
+
+    if (canPost) {
+        var queue = [];
+        window.addEventListener('message', function (ev) {
+            var source = ev.source;
+            if ((source === window || source === null) && ev.data === 'process-tick') {
+                ev.stopPropagation();
+                if (queue.length > 0) {
+                    var fn = queue.shift();
+                    fn();
+                }
+            }
+        }, true);
+
+        return function nextTick(fn) {
+            queue.push(fn);
+            window.postMessage('process-tick', '*');
+        };
+    }
+
+    return function nextTick(fn) {
+        setTimeout(fn, 0);
+    };
+})();
+
+process.title = 'browser';
+process.browser = true;
+process.env = {};
+process.argv = [];
+
+function noop() {}
+
+process.on = noop;
+process.addListener = noop;
+process.once = noop;
+process.off = noop;
+process.removeListener = noop;
+process.removeAllListeners = noop;
+process.emit = noop;
+
+process.binding = function (name) {
+    throw new Error('process.binding is not supported');
+}
+
+// TODO(shtylman)
+process.cwd = function () { return '/' };
+process.chdir = function (dir) {
+    throw new Error('process.chdir is not supported');
+};
+
+},{}],6:[function(require,module,exports){
 module.exports = function isBuffer(arg) {
   return arg && typeof arg === 'object'
     && typeof arg.copy === 'function'
     && typeof arg.fill === 'function'
     && typeof arg.readUInt8 === 'function';
 }
-},{}],3:[function(require,module,exports){
+},{}],7:[function(require,module,exports){
 (function (process,global){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -957,372 +1322,7 @@ function hasOwnProperty(obj, prop) {
 }
 
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./support/isBuffer":2,"_process":7,"inherits":4}],4:[function(require,module,exports){
-if (typeof Object.create === 'function') {
-  // implementation from standard node.js 'util' module
-  module.exports = function inherits(ctor, superCtor) {
-    ctor.super_ = superCtor
-    ctor.prototype = Object.create(superCtor.prototype, {
-      constructor: {
-        value: ctor,
-        enumerable: false,
-        writable: true,
-        configurable: true
-      }
-    });
-  };
-} else {
-  // old school shim for old browsers
-  module.exports = function inherits(ctor, superCtor) {
-    ctor.super_ = superCtor
-    var TempCtor = function () {}
-    TempCtor.prototype = superCtor.prototype
-    ctor.prototype = new TempCtor()
-    ctor.prototype.constructor = ctor
-  }
-}
-
-},{}],5:[function(require,module,exports){
-exports.endianness = function () { return 'LE' };
-
-exports.hostname = function () {
-    if (typeof location !== 'undefined') {
-        return location.hostname
-    }
-    else return '';
-};
-
-exports.loadavg = function () { return [] };
-
-exports.uptime = function () { return 0 };
-
-exports.freemem = function () {
-    return Number.MAX_VALUE;
-};
-
-exports.totalmem = function () {
-    return Number.MAX_VALUE;
-};
-
-exports.cpus = function () { return [] };
-
-exports.type = function () { return 'Browser' };
-
-exports.release = function () {
-    if (typeof navigator !== 'undefined') {
-        return navigator.appVersion;
-    }
-    return '';
-};
-
-exports.networkInterfaces
-= exports.getNetworkInterfaces
-= function () { return {} };
-
-exports.arch = function () { return 'javascript' };
-
-exports.platform = function () { return 'browser' };
-
-exports.tmpdir = exports.tmpDir = function () {
-    return '/tmp';
-};
-
-exports.EOL = '\n';
-
-},{}],6:[function(require,module,exports){
-(function (process){
-// Copyright Joyent, Inc. and other Node contributors.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the
-// "Software"), to deal in the Software without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Software, and to permit
-// persons to whom the Software is furnished to do so, subject to the
-// following conditions:
-//
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
-// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-// USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-// resolves . and .. elements in a path array with directory names there
-// must be no slashes, empty elements, or device names (c:\) in the array
-// (so also no leading and trailing slashes - it does not distinguish
-// relative and absolute paths)
-function normalizeArray(parts, allowAboveRoot) {
-  // if the path tries to go above the root, `up` ends up > 0
-  var up = 0;
-  for (var i = parts.length - 1; i >= 0; i--) {
-    var last = parts[i];
-    if (last === '.') {
-      parts.splice(i, 1);
-    } else if (last === '..') {
-      parts.splice(i, 1);
-      up++;
-    } else if (up) {
-      parts.splice(i, 1);
-      up--;
-    }
-  }
-
-  // if the path is allowed to go above the root, restore leading ..s
-  if (allowAboveRoot) {
-    for (; up--; up) {
-      parts.unshift('..');
-    }
-  }
-
-  return parts;
-}
-
-// Split a filename into [root, dir, basename, ext], unix version
-// 'root' is just a slash, or nothing.
-var splitPathRe =
-    /^(\/?|)([\s\S]*?)((?:\.{1,2}|[^\/]+?|)(\.[^.\/]*|))(?:[\/]*)$/;
-var splitPath = function(filename) {
-  return splitPathRe.exec(filename).slice(1);
-};
-
-// path.resolve([from ...], to)
-// posix version
-exports.resolve = function() {
-  var resolvedPath = '',
-      resolvedAbsolute = false;
-
-  for (var i = arguments.length - 1; i >= -1 && !resolvedAbsolute; i--) {
-    var path = (i >= 0) ? arguments[i] : process.cwd();
-
-    // Skip empty and invalid entries
-    if (typeof path !== 'string') {
-      throw new TypeError('Arguments to path.resolve must be strings');
-    } else if (!path) {
-      continue;
-    }
-
-    resolvedPath = path + '/' + resolvedPath;
-    resolvedAbsolute = path.charAt(0) === '/';
-  }
-
-  // At this point the path should be resolved to a full absolute path, but
-  // handle relative paths to be safe (might happen when process.cwd() fails)
-
-  // Normalize the path
-  resolvedPath = normalizeArray(filter(resolvedPath.split('/'), function(p) {
-    return !!p;
-  }), !resolvedAbsolute).join('/');
-
-  return ((resolvedAbsolute ? '/' : '') + resolvedPath) || '.';
-};
-
-// path.normalize(path)
-// posix version
-exports.normalize = function(path) {
-  var isAbsolute = exports.isAbsolute(path),
-      trailingSlash = substr(path, -1) === '/';
-
-  // Normalize the path
-  path = normalizeArray(filter(path.split('/'), function(p) {
-    return !!p;
-  }), !isAbsolute).join('/');
-
-  if (!path && !isAbsolute) {
-    path = '.';
-  }
-  if (path && trailingSlash) {
-    path += '/';
-  }
-
-  return (isAbsolute ? '/' : '') + path;
-};
-
-// posix version
-exports.isAbsolute = function(path) {
-  return path.charAt(0) === '/';
-};
-
-// posix version
-exports.join = function() {
-  var paths = Array.prototype.slice.call(arguments, 0);
-  return exports.normalize(filter(paths, function(p, index) {
-    if (typeof p !== 'string') {
-      throw new TypeError('Arguments to path.join must be strings');
-    }
-    return p;
-  }).join('/'));
-};
-
-
-// path.relative(from, to)
-// posix version
-exports.relative = function(from, to) {
-  from = exports.resolve(from).substr(1);
-  to = exports.resolve(to).substr(1);
-
-  function trim(arr) {
-    var start = 0;
-    for (; start < arr.length; start++) {
-      if (arr[start] !== '') break;
-    }
-
-    var end = arr.length - 1;
-    for (; end >= 0; end--) {
-      if (arr[end] !== '') break;
-    }
-
-    if (start > end) return [];
-    return arr.slice(start, end - start + 1);
-  }
-
-  var fromParts = trim(from.split('/'));
-  var toParts = trim(to.split('/'));
-
-  var length = Math.min(fromParts.length, toParts.length);
-  var samePartsLength = length;
-  for (var i = 0; i < length; i++) {
-    if (fromParts[i] !== toParts[i]) {
-      samePartsLength = i;
-      break;
-    }
-  }
-
-  var outputParts = [];
-  for (var i = samePartsLength; i < fromParts.length; i++) {
-    outputParts.push('..');
-  }
-
-  outputParts = outputParts.concat(toParts.slice(samePartsLength));
-
-  return outputParts.join('/');
-};
-
-exports.sep = '/';
-exports.delimiter = ':';
-
-exports.dirname = function(path) {
-  var result = splitPath(path),
-      root = result[0],
-      dir = result[1];
-
-  if (!root && !dir) {
-    // No dirname whatsoever
-    return '.';
-  }
-
-  if (dir) {
-    // It has a dirname, strip trailing slash
-    dir = dir.substr(0, dir.length - 1);
-  }
-
-  return root + dir;
-};
-
-
-exports.basename = function(path, ext) {
-  var f = splitPath(path)[2];
-  // TODO: make this comparison case-insensitive on windows?
-  if (ext && f.substr(-1 * ext.length) === ext) {
-    f = f.substr(0, f.length - ext.length);
-  }
-  return f;
-};
-
-
-exports.extname = function(path) {
-  return splitPath(path)[3];
-};
-
-function filter (xs, f) {
-    if (xs.filter) return xs.filter(f);
-    var res = [];
-    for (var i = 0; i < xs.length; i++) {
-        if (f(xs[i], i, xs)) res.push(xs[i]);
-    }
-    return res;
-}
-
-// String.prototype.substr - negative index don't work in IE8
-var substr = 'ab'.substr(-1) === 'b'
-    ? function (str, start, len) { return str.substr(start, len) }
-    : function (str, start, len) {
-        if (start < 0) start = str.length + start;
-        return str.substr(start, len);
-    }
-;
-
-}).call(this,require('_process'))
-},{"_process":7}],7:[function(require,module,exports){
-// shim for using process in browser
-
-var process = module.exports = {};
-
-process.nextTick = (function () {
-    var canSetImmediate = typeof window !== 'undefined'
-    && window.setImmediate;
-    var canPost = typeof window !== 'undefined'
-    && window.postMessage && window.addEventListener
-    ;
-
-    if (canSetImmediate) {
-        return function (f) { return window.setImmediate(f) };
-    }
-
-    if (canPost) {
-        var queue = [];
-        window.addEventListener('message', function (ev) {
-            var source = ev.source;
-            if ((source === window || source === null) && ev.data === 'process-tick') {
-                ev.stopPropagation();
-                if (queue.length > 0) {
-                    var fn = queue.shift();
-                    fn();
-                }
-            }
-        }, true);
-
-        return function nextTick(fn) {
-            queue.push(fn);
-            window.postMessage('process-tick', '*');
-        };
-    }
-
-    return function nextTick(fn) {
-        setTimeout(fn, 0);
-    };
-})();
-
-process.title = 'browser';
-process.browser = true;
-process.env = {};
-process.argv = [];
-
-function noop() {}
-
-process.on = noop;
-process.addListener = noop;
-process.once = noop;
-process.off = noop;
-process.removeListener = noop;
-process.removeAllListeners = noop;
-process.emit = noop;
-
-process.binding = function (name) {
-    throw new Error('process.binding is not supported');
-}
-
-// TODO(shtylman)
-process.cwd = function () { return '/' };
-process.chdir = function (dir) {
-    throw new Error('process.chdir is not supported');
-};
-
-},{}],8:[function(require,module,exports){
+},{"./support/isBuffer":6,"_process":5,"inherits":2}],8:[function(require,module,exports){
 "use strict";
 
 var SourceMapGenerator = require("source-map").SourceMapGenerator;
@@ -1561,6 +1561,7 @@ var ngInject = require("./nginject");
 var generateSourcemap = require("./generate-sourcemap");
 var Lut = require("./lut");
 var scopeTools = require("./scopetools");
+var stringmap = require("stringmap");
 
 var chainedRouteProvider = 1;
 var chainedUrlRouterProvider = 2;
@@ -1584,23 +1585,32 @@ function match(node, ctx, matchPlugins) {
 }
 
 function matchDirectiveReturnObject(node) {
+    // only matches inside directives
     // return { .. controller: function($scope, $timeout), ...}
 
-    return node.type === "ReturnStatement" &&
+    return limit("directive", node.type === "ReturnStatement" &&
         node.argument && node.argument.type === "ObjectExpression" &&
-        matchProp("controller", node.argument.properties);
+        matchProp("controller", node.argument.properties));
+}
+
+function limit(name, node) {
+    if (node) {
+        node.$limitToMethodName = name;
+    }
+    return node;
 }
 
 function matchProviderGet(node) {
+    // only matches inside providers
     // (this|self|that).$get = function($scope, $timeout)
     // { ... $get: function($scope, $timeout), ...}
     var memberExpr;
     var self;
-    return (node.type === "AssignmentExpression" && (memberExpr = node.left).type === "MemberExpression" &&
+    return limit("provider", (node.type === "AssignmentExpression" && (memberExpr = node.left).type === "MemberExpression" &&
         memberExpr.property.name === "$get" &&
         ((self = memberExpr.object).type === "ThisExpression" || (self.type === "Identifier" && is.someof(self.name, ["self", "that"]))) &&
         node.right) ||
-        (node.type === "ObjectExpression" && matchProp("$get", node.properties));
+        (node.type === "ObjectExpression" && matchProp("$get", node.properties)));
 }
 
 function matchNgRoute(node) {
@@ -1655,6 +1665,9 @@ function matchNgUi(node) {
     // $stateProvider.state("myState", {... resolve: {f: function($scope) {}, ..} ..})
     // $stateProvider.state("myState", {... views: {... somename: {... controller: fn, controllerProvider: fn, templateProvider: fn, resolve: {f: fn}}}})
     //
+    // stateHelperProvider.setNestedState({ sameasregularstate, children: [sameasregularstate, ..]})
+    // stateHelperProvider.setNestedState({ sameasregularstate, children: [sameasregularstate, ..]}, true)
+    //
     // $urlRouterProvider.when(.., function($scope) {})
     //
     // $modal.open({.. controller: fn, resolve: {f: function($scope) {}, ..}});
@@ -1668,9 +1681,9 @@ function matchNgUi(node) {
     // shortcut for $modal.open({.. controller: fn, resolve: {f: function($scope) {}, ..}});
     if (obj.type === "Identifier" && obj.name === "$modal" && method.name === "open" &&
         args.length === 1 && args[0].type === "ObjectExpression") {
-        var props$0 = args[0].properties;
-        var res$0 = [matchProp("controller", props$0)];
-        res$0.push.apply(res$0, matchResolve(props$0));
+        var props = args[0].properties;
+        var res$0 = [matchProp("controller", props)];
+        res$0.push.apply(res$0, matchResolve(props));
         return res$0.filter(Boolean);
     }
 
@@ -1684,53 +1697,76 @@ function matchNgUi(node) {
         return false;
     }
 
-    // everything below is for $stateProvider alone
-    if (!(obj.$chained === chainedStateProvider || (obj.type === "Identifier" && obj.name === "$stateProvider"))) {
+    // everything below is for $stateProvider and stateHelperProvider alone
+    if (!(obj.$chained === chainedStateProvider || (obj.type === "Identifier" && is.someof(obj.name, ["$stateProvider", "stateHelperProvider"])))) {
         return false;
     }
     node.$chained = chainedStateProvider;
 
-    if (method.name !== "state") {
+    if (is.noneof(method.name, ["state", "setNestedState"])) {
         return false;
     }
 
     // $stateProvider.state({ ... }) and $stateProvider.state("name", { ... })
+    // stateHelperProvider.setNestedState({ .. }) and stateHelperProvider.setNestedState({ .. }, true)
     if (!(args.length >= 1 && args.length <= 2)) {
         return false;
     }
 
-    var configArg = last(args);
-    if (configArg.type !== "ObjectExpression") {
-        return false;
-    }
+    var configArg = (method.name === "state" ? last(args) : args[0]);
 
-    var props = configArg.properties;
-    var res = [
-        matchProp("controller", props),
-        matchProp("controllerProvider", props),
-        matchProp("templateProvider", props),
-        matchProp("onEnter", props),
-        matchProp("onExit", props),
-    ];
+    var res = [];
 
-    // {resolve: ..}
-    res.push.apply(res, matchResolve(props));
-
-    // {view: ...}
-    var viewObject = matchProp("views", props);
-    if (viewObject && viewObject.type === "ObjectExpression") {
-        viewObject.properties.forEach(function(prop) {
-            if (prop.value.type === "ObjectExpression") {
-                res.push(matchProp("controller", prop.value.properties));
-                res.push(matchProp("controllerProvider", prop.value.properties));
-                res.push(matchProp("templateProvider", prop.value.properties));
-                res.push.apply(res, matchResolve(prop.value.properties));
-            }
-        });
-    }
+    recursiveMatch(configArg);
 
     var filteredRes = res.filter(Boolean);
     return (filteredRes.length === 0 ? false : filteredRes);
+
+
+    function recursiveMatch(objectExpressionNode) {
+        if (!objectExpressionNode || objectExpressionNode.type !== "ObjectExpression") {
+            return false;
+        }
+
+        var properties = objectExpressionNode.properties;
+
+        matchStateProps(properties, res);
+
+        var childrenArrayExpression = matchProp("children", properties);
+        var children = childrenArrayExpression && childrenArrayExpression.elements;
+
+        if (!children) {
+            return;
+        }
+        children.forEach(recursiveMatch);
+    }
+
+    function matchStateProps(props, res) {
+        var simple = [
+            matchProp("controller", props),
+            matchProp("controllerProvider", props),
+            matchProp("templateProvider", props),
+            matchProp("onEnter", props),
+            matchProp("onExit", props),
+        ];
+        res.push.apply(res, simple);
+
+        // {resolve: ..}
+        res.push.apply(res, matchResolve(props));
+
+        // {view: ...}
+        var viewObject = matchProp("views", props);
+        if (viewObject && viewObject.type === "ObjectExpression") {
+            viewObject.properties.forEach(function(prop) {
+                if (prop.value.type === "ObjectExpression") {
+                    res.push(matchProp("controller", prop.value.properties));
+                    res.push(matchProp("controllerProvider", prop.value.properties));
+                    res.push(matchProp("templateProvider", prop.value.properties));
+                    res.push.apply(res, matchResolve(prop.value.properties));
+                }
+            });
+        }
+    }
 }
 
 function matchHttpProvider(node) {
@@ -1759,7 +1795,7 @@ function matchRegular(node, ctx) {
     if (obj.name === "angular" && method.name === "module") {
         var args$0 = node.arguments;
         if (args$0.length >= 2) {
-            last(args$0).$always = true;
+            node.$chained = chainedRegular;
             return last(args$0);
         }
     }
@@ -1780,8 +1816,12 @@ function matchRegular(node, ctx) {
         args.length === 1 && args[0] :
         args.length === 2 && args[0].type === "Literal" && is.string(args[0].value) && args[1]);
 
-    if (target) {
-        target.$always = true;
+    target.$methodName = method.name;
+
+    if (ctx.rename && args.length === 2 && target) {
+        // for eventual rename purposes
+        var somethingNameLiteral = args[0];
+        return [somethingNameLiteral, target];
     }
     return target;
 }
@@ -1826,16 +1866,23 @@ function matchResolve(props) {
     return [];
 };
 
-function stringify(arr, quot) {
+function renamedString(ctx, originalString) {
+    if (ctx.rename) {
+        return ctx.rename.get(originalString) || originalString;
+    }
+    return originalString;
+}
+
+function stringify(ctx, arr, quot) {
     return "[" + arr.map(function(arg) {
-        return quot + arg.name + quot;
+        return quot + renamedString(ctx, arg.name) + quot;
     }).join(", ") + "]";
 }
 
-function insertArray(functionExpression, fragments, quot) {
+function insertArray(ctx, functionExpression, fragments, quot) {
     var range = functionExpression.range;
 
-    var args = stringify(functionExpression.params, quot);
+    var args = stringify(ctx, functionExpression.params, quot);
     fragments.push({
         start: range[0],
         end: range[0],
@@ -1848,13 +1895,14 @@ function insertArray(functionExpression, fragments, quot) {
     });
 }
 
-function replaceArray(array, fragments, quot) {
+function replaceArray(ctx, array, fragments, quot) {
     var functionExpression = last(array.elements);
 
     if (functionExpression.params.length === 0) {
         return removeArray(array, fragments);
     }
-    var args = stringify(functionExpression.params, quot);
+
+    var args = stringify(ctx, functionExpression.params, quot);
     fragments.push({
         start: array.range[0],
         end: functionExpression.range[0],
@@ -1877,49 +1925,128 @@ function removeArray(array, fragments) {
     });
 }
 
+function renameProviderDeclarationSite(ctx, literalNode, fragments) {
+    fragments.push({
+        start: literalNode.range[0] + 1,
+        end: literalNode.range[1] - 1,
+        str: renamedString(ctx, literalNode.value),
+    });
+}
+
 function judgeSuspects(ctx) {
-    var suspects = ctx.suspects;
     var mode = ctx.mode;
     var fragments = ctx.fragments;
     var quot = ctx.quot;
 
-    for (var i = 0; i < suspects.length; i++) {
-        var target = suspects[i];
+    var suspects = makeUnique(ctx.suspects, 1);
 
-        if (target.$once) {
-            continue;
+    for (var n = 0; n < 42; n++) {
+        // could be while(true), above is just a safety-net
+        // in practice it will loop just a couple of times
+        propagateModuleContextAndMethodName(suspects);
+        if (!setChainedAndMethodNameThroughIifesAndReferences(suspects)) {
+            break;
         }
-        target.$once = true;
+    }
 
-        if (!target.$always) {
-            var $caller = target.$caller;
-            for (; $caller && $caller.$chained !== chainedRegular; $caller = $caller.$caller) {
-            }
-            if (!$caller) {
-                continue;
-            }
+    // create final suspects by jumping, following, uniq'ing
+    var finalSuspects = makeUnique(suspects.map(function(target) {
+        var jumped = jumpOverIife(target);
+        var jumpedAndFollowed = followReference(jumped) || jumped;
+
+        if (target.$limitToMethodName && findOuterMethodName(target) !== target.$limitToMethodName) {
+            return null;
         }
 
-        target = jumpOverIife(target);
-        var followedTarget = followReference(target);
-        if (followedTarget) {
-            if (followedTarget.$once) {
-                continue;
-            }
-            followedTarget.$once = true;
-            target = followedTarget;
+        return jumpedAndFollowed;
+    }).filter(Boolean), 2);
+
+    finalSuspects.forEach(function(target) {
+        if (target.$chained !== chainedRegular) {
+            return;
         }
 
         if (mode === "rebuild" && isAnnotatedArray(target)) {
-            replaceArray(target, fragments, quot);
+            replaceArray(ctx, target, fragments, quot);
         } else if (mode === "remove" && isAnnotatedArray(target)) {
             removeArray(target, fragments);
         } else if (is.someof(mode, ["add", "rebuild"]) && isFunctionExpressionWithArgs(target)) {
-            insertArray(target, fragments, quot);
+            insertArray(ctx, target, fragments, quot);
+        } else if (isGenericProviderName(target)) {
+            renameProviderDeclarationSite(ctx, target, fragments);
         } else {
             // if it's not array or function-expression, then it's a candidate for foo.$inject = [..]
             judgeInjectArraySuspect(target, ctx);
         }
+    });
+
+
+    function propagateModuleContextAndMethodName(suspects) {
+        suspects.forEach(function(target) {
+            if (target.$chained !== chainedRegular && isInsideModuleContext(target)) {
+                target.$chained = chainedRegular;
+            }
+
+            if (!target.$methodName) {
+                var methodName = findOuterMethodName(target);
+                if (methodName) {
+                    target.$methodName = methodName;
+                }
+            }
+        });
+    }
+
+    function findOuterMethodName(node) {
+        for (; node && !node.$methodName; node = node.$parent) {
+        }
+        return node ? node.$methodName : null;
+    }
+
+    function setChainedAndMethodNameThroughIifesAndReferences(suspects) {
+        var modified = false;
+        suspects.forEach(function(target) {
+            var jumped = jumpOverIife(target);
+            if (jumped !== target) { // we did skip an IIFE
+                if (target.$chained === chainedRegular && jumped.$chained !== chainedRegular) {
+                    modified = true;
+                    jumped.$chained = chainedRegular;
+                }
+                if (target.$methodName && !jumped.$methodName) {
+                    modified = true;
+                    jumped.$methodName = target.$methodName;
+                }
+            }
+
+            var jumpedAndFollowed = followReference(jumped) || jumped;
+            if (jumpedAndFollowed !== jumped) { // we did follow a reference
+                if (jumped.$chained === chainedRegular && jumpedAndFollowed.$chained !== chainedRegular) {
+                    modified = true;
+                    jumpedAndFollowed.$chained = chainedRegular;
+                }
+                if (jumped.$methodName && !jumpedAndFollowed.$methodName) {
+                    modified = true;
+                    jumpedAndFollowed.$methodName = jumped.$methodName;
+                }
+            }
+        });
+        return modified;
+    }
+
+    function isInsideModuleContext(node) {
+        var $parent = node.$parent;
+        for (; $parent && $parent.$chained !== chainedRegular; $parent = $parent.$parent) {
+        }
+        return Boolean($parent);
+    }
+
+    function makeUnique(suspects, val) {
+        return suspects.filter(function(target) {
+            if (target.$seen === val) {
+                return false;
+            }
+            target.$seen = val;
+            return true;
+        });
     }
 }
 
@@ -1950,10 +2077,36 @@ function followReference(node) {
     return null;
 }
 
+// O(srclength) so should only be used for debugging purposes, else replace with lut
+function posToLine(pos, src) {
+    if (pos >= src.length) {
+        pos = src.length - 1;
+    }
+
+    if (pos <= -1) {
+        return -1;
+    }
+
+    var line = 1;
+    for (var i = 0; i < pos; i++) {
+        if (src[i] === "\n") {
+            ++line;
+        }
+    }
+
+    return line;
+}
+
 function judgeInjectArraySuspect(node, ctx) {
     // /*@ngInject*/ var foo = function($scope) {} and
     // /*@ngInject*/ function foo($scope) {} and
     // /*@ngInject*/ foo.bar[0] = function($scope) {}
+
+    // suspect must be inside of a block or at the top-level (i.e. inside of node.$parent.body[])
+    if (!node.$parent || is.noneof(node.$parent.type, ["Program", "BlockStatement"])) {
+        return;
+    }
+
     var d0 = null;
     var nr0 = node.range[0];
     var nr1 = node.range[1];
@@ -1979,11 +2132,38 @@ function judgeInjectArraySuspect(node, ctx) {
         return src.slice(lineStart, i);
     }
 
-    function addRemoveInjectArray(params, posBeforeFunctionDeclaration, posAfterFunctionDeclaration, name) {
+    function addRemoveInjectArray(params, posAtFunctionDeclaration, posAfterFunctionDeclaration, name) {
+        // if an existing something.$inject = [..] exists then is will always be recycled when rebuilding
+
         var indent = getIndent(posAfterFunctionDeclaration);
 
-        var nextNode = ctx.lut.findNodeFromPos(posAfterFunctionDeclaration);
-        var prevNode = ctx.lut.findNodeBeforePos(posBeforeFunctionDeclaration);
+        var foundSuspectInBody = false;
+        var existingExpressionStatementWithArray = null;
+        var troublesomeReturn = false;
+        node.$parent.body.forEach(function(bnode) {
+            if (bnode === node) {
+                foundSuspectInBody = true;
+            }
+
+            if (hasInjectArray(bnode)) {
+                if (existingExpressionStatementWithArray) {
+                    throw fmt("conflicting inject arrays at line {0} and {1}",
+                        posToLine(existingExpressionStatementWithArray.range[0], ctx.src),
+                        posToLine(bnode.range[0], ctx.src));
+                }
+                existingExpressionStatementWithArray = bnode;
+            }
+
+            // there's a return statement before our function
+            if (!foundSuspectInBody && bnode.type === "ReturnStatement") {
+                troublesomeReturn = bnode;
+            }
+        });
+        assert(foundSuspectInBody);
+
+        if (troublesomeReturn && !existingExpressionStatementWithArray) {
+            posAfterFunctionDeclaration = skipPrevNewline(troublesomeReturn.range[0]);
+        }
 
         function hasInjectArray(node) {
             var lvalue;
@@ -2004,28 +2184,37 @@ function judgeInjectArraySuspect(node, ctx) {
             return pos;
         }
 
-        var hasArrayBefore = hasInjectArray(prevNode);
-        var hasArrayAfter = hasInjectArray(nextNode);
+        function skipPrevNewline(pos) {
+            var prevLF = ctx.src.lastIndexOf("\n", pos);
+            if (prevLF === -1) {
+                return pos;
+            }
+            if (prevLF >= 1 && ctx.src[prevLF] === "\r") {
+                --prevLF;
+            }
 
-        var hasArray = hasArrayBefore || hasArrayAfter;
-        var start = hasArrayBefore ? prevNode.range[0]: posAfterFunctionDeclaration;
-        var end = hasArrayBefore ? skipNewline(prevNode.range[1]) : nextNode.range[1];
+            if (/\S/g.test(ctx.src.slice(prevLF, pos - 1))) {
+                return pos;
+            }
 
-        var str = fmt("{0}{1}{2}.$inject = {3};", EOL, indent, name, ctx.stringify(params, ctx.quot));
+            return prevLF;
+        }
 
-        if (ctx.mode === "rebuild" && hasArray) {
+        var str = fmt("{0}{1}{2}.$inject = {3};", EOL, indent, name, ctx.stringify(ctx, params, ctx.quot));
+
+        if (ctx.mode === "rebuild" && existingExpressionStatementWithArray) {
             ctx.fragments.push({
-                start: start,
-                end: end,
+                start: existingExpressionStatementWithArray.range[0],
+                end: existingExpressionStatementWithArray.range[1],
                 str: str,
             });
-        } else if (ctx.mode === "remove" && hasArray) {
+        } else if (ctx.mode === "remove" && existingExpressionStatementWithArray) {
             ctx.fragments.push({
-                start: start,
-                end: end,
+                start: skipPrevNewline(existingExpressionStatementWithArray.range[0]),
+                end: existingExpressionStatementWithArray.range[1],
                 str: "",
             });
-        } else if (is.someof(ctx.mode, ["add", "rebuild"]) && !hasArray) {
+        } else if (is.someof(ctx.mode, ["add", "rebuild"]) && !existingExpressionStatementWithArray) {
             ctx.fragments.push({
                 start: posAfterFunctionDeclaration,
                 end: posAfterFunctionDeclaration,
@@ -2052,7 +2241,7 @@ function addModuleContextDependentSuspect(target, ctx) {
 }
 
 function addModuleContextIndependentSuspect(target, ctx) {
-    target.$always = true;
+    target.$chained = chainedRegular;
     ctx.suspects.push(target);
 }
 
@@ -2064,6 +2253,9 @@ function isFunctionExpressionWithArgs(node) {
 }
 function isFunctionDeclarationWithArgs(node) {
     return node.type === "FunctionDeclaration" && node.params.length >= 1;
+}
+function isGenericProviderName(node) {
+    return node.type === "Literal" && is.string(node.value);
 }
 
 window.annotate = function ngAnnotate(src, options) {
@@ -2077,6 +2269,12 @@ window.annotate = function ngAnnotate(src, options) {
 
     var quot = options.single_quotes ? "'" : '"';
     var re = (options.regexp ? new RegExp(options.regexp) : /^[a-zA-Z0-9_\$\.\s]+$/);
+    var rename = new stringmap();
+    if (options.rename) {
+        options.rename.forEach(function(value) {
+            rename.set(value.from, value.to);
+        });
+    }
     var ast;
     var stats = {};
     try {
@@ -2118,8 +2316,7 @@ window.annotate = function ngAnnotate(src, options) {
     // A suspect node will get annotations added / removed if it
     // fulfills the arrayexpression or functionexpression look,
     // and if it is in the correct context (inside an angular
-    // module definition) - alternatively is forced to ignore
-    // context with node.$always = true
+    // module definition)
     var suspects = [];
 
     var lut = new Lut(ast, src);
@@ -2134,6 +2331,7 @@ window.annotate = function ngAnnotate(src, options) {
             return src.slice(range[0], range[1]);
         },
         re: re,
+        rename: rename,
         comments: comments,
         fragments: fragments,
         suspects: suspects,
@@ -2163,22 +2361,12 @@ window.annotate = function ngAnnotate(src, options) {
         plugin.init(ctx);
     });
 
-    var recentCaller = undefined; // micro-optimization
-    var callerIds = [];
     traverse(ast, {pre: function(node) {
-        node.$caller = recentCaller;
         if (node.type === "CallExpression") {
-            callerIds.push(node);
-            recentCaller = node;
             ngInject.inspectCallExpression(node, ctx);
         }
 
     }, post: function(node) {
-        if (node === recentCaller) {
-            callerIds.pop();
-            recentCaller = last(callerIds);
-        }
-
         var targets = match(node, ctx, matchPluginsOrNull);
         if (!targets) {
             return;
@@ -2192,7 +2380,13 @@ window.annotate = function ngAnnotate(src, options) {
         }
     }});
 
-    judgeSuspects(ctx);
+    try {
+        judgeSuspects(ctx);
+    } catch(e) {
+        return {
+            errors: ["error: " + e],
+        };
+    }
 
     var out = alter(src, fragments);
     var result = {
@@ -2209,7 +2403,7 @@ window.annotate = function ngAnnotate(src, options) {
     return result;
 }
 
-},{"./generate-sourcemap":8,"./lut":9,"./nginject":11,"./scopetools":13,"alter":14,"assert":1,"esprima":15,"ordered-ast-traverse":17,"os":5,"simple-fmt":18,"simple-is":19}],11:[function(require,module,exports){
+},{"./generate-sourcemap":8,"./lut":9,"./nginject":11,"./scopetools":13,"alter":14,"assert":1,"esprima":15,"ordered-ast-traverse":17,"os":3,"simple-fmt":18,"simple-is":19,"stringmap":31}],11:[function(require,module,exports){
 // nginject-comments.js
 // MIT licensed, see LICENSE file
 // Copyright (c) 2013-2014 Olov Lassus <olov.lassus@gmail.com>
@@ -7672,7 +7866,7 @@ define(function (require, exports, module) {
           this._sourcesContents = {};
         }
         this._sourcesContents[util.toSetString(source)] = aSourceContent;
-      } else {
+      } else if (this._sourcesContents) {
         // Remove the source file from the _sourcesContents map.
         // If the _sourcesContents map is empty, set the property to null.
         delete this._sourcesContents[util.toSetString(source)];
@@ -8972,7 +9166,7 @@ function amdefine(module, requireFn) {
 module.exports = amdefine;
 
 }).call(this,require('_process'),"/node_modules/ng-annotate/node_modules/source-map/node_modules/amdefine/amdefine.js")
-},{"_process":7,"path":6}],30:[function(require,module,exports){
+},{"_process":5,"path":4}],30:[function(require,module,exports){
 //! stable.js 0.1.5, https://github.com/Two-Screen/stable
 //! © 2014 Angry Bytes and contributors. MIT licensed.
 
