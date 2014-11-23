@@ -1598,13 +1598,38 @@ function match(node, ctx, matchPlugins) {
 
     // matchInjectorInvoke must happen before matchRegular
     // to prevent false positive ($injector.invoke() outside module)
+    // matchProvide must happen before matchRegular
+    // to prevent regular from matching it as a short-form
     var matchMethodCalls = (isMethodCall &&
-        (matchInjectorInvoke(node) || matchRegular(node, ctx) || matchNgRoute(node) || matchNgUi(node) || matchHttpProvider(node)));
+        (matchInjectorInvoke(node) || matchProvide(node, ctx) || matchRegular(node, ctx) || matchNgRoute(node) || matchMaterialShowModalOpen(node) || matchNgUi(node) || matchHttpProvider(node)));
 
     return matchMethodCalls ||
         (matchPlugins && matchPlugins(node)) ||
         matchDirectiveReturnObject(node) ||
         matchProviderGet(node);
+}
+
+function matchMaterialShowModalOpen(node) {
+    // $mdDialog.show({.. controller: fn, resolve: {f: function($scope) {}, ..}});
+    // $mdToast.show({.. controller: fn, resolve: {f: function($scope) {}, ..}});
+    // $mdBottomSheet.show({.. controller: fn, resolve: {f: function($scope) {}, ..}});
+    // $modal.open({.. controller: fn, resolve: {f: function($scope) {}, ..}});
+
+    // we already know that node is a (non-computed) method call
+    var callee = node.callee;
+    var obj = callee.object; // identifier or expression
+    var method = callee.property; // identifier
+    var args = node.arguments;
+
+    if (obj.type === "Identifier" &&
+        ((obj.name === "$modal" && method.name === "open") || (is.someof(obj.name, ["$mdDialog", "$mdToast", "$mdBottomSheet"]) && method.name === "show")) &&
+        args.length === 1 && args[0].type === "ObjectExpression") {
+        var props = args[0].properties;
+        var res = [matchProp("controller", props)];
+        res.push.apply(res, matchResolve(props));
+        return res.filter(Boolean);
+    }
+    return false;
 }
 
 function matchDirectiveReturnObject(node) {
@@ -1693,22 +1718,13 @@ function matchNgUi(node) {
     //
     // $urlRouterProvider.when(.., function($scope) {})
     //
-    // $modal.open({.. controller: fn, resolve: {f: function($scope) {}, ..}});
+    // $modal.open see matchMaterialShowModalOpen
 
     // we already know that node is a (non-computed) method call
     var callee = node.callee;
     var obj = callee.object; // identifier or expression
     var method = callee.property; // identifier
     var args = node.arguments;
-
-    // shortcut for $modal.open({.. controller: fn, resolve: {f: function($scope) {}, ..}});
-    if (obj.type === "Identifier" && obj.name === "$modal" && method.name === "open" &&
-        args.length === 1 && args[0].type === "ObjectExpression") {
-        var props = args[0].properties;
-        var res$0 = [matchProp("controller", props)];
-        res$0.push.apply(res$0, matchResolve(props));
-        return res$0.filter(Boolean);
-    }
 
     // shortcut for $urlRouterProvider.when(.., function($scope) {})
     if (obj.$chained === chainedUrlRouterProvider || (obj.type === "Identifier" && obj.name === "$urlRouterProvider")) {
@@ -1820,6 +1836,33 @@ function matchHttpProvider(node) {
         node.arguments.length >= 1 && node.arguments);
 }
 
+function matchProvide(node, ctx) {
+    // $provide.decorator("foo", function($scope) {});
+    // $provide.service("foo", function($scope) {});
+    // $provide.factory("foo", function($scope) {});
+    // $provide.provider("foo", function($scope) {});
+
+    // we already know that node is a (non-computed) method call
+    var callee = node.callee;
+    var obj = callee.object; // identifier or expression
+    var method = callee.property; // identifier
+    var args = node.arguments;
+
+    var target = obj.type === "Identifier" && obj.name === "$provide" &&
+        is.someof(method.name, ["decorator", "service", "factory", "provider"]) &&
+        args.length === 2 && args[1];
+
+    if (target) {
+        target.$methodName = method.name;
+
+        if (ctx.rename) {
+            // for eventual rename purposes
+            return args;
+        }
+    }
+    return target;
+}
+
 function matchRegular(node, ctx) {
     // we already know that node is a (non-computed) method call
     var callee = node.callee;
@@ -1837,7 +1880,7 @@ function matchRegular(node, ctx) {
     }
 
     var matchAngularModule = (obj.$chained === chainedRegular || isReDef(obj, ctx) || isLongDef(obj)) &&
-        is.someof(method.name, ["provider", "value", "constant", "bootstrap", "config", "factory", "directive", "filter", "run", "controller", "service", "decorator", "animation", "invoke"]);
+        is.someof(method.name, ["provider", "value", "constant", "bootstrap", "config", "factory", "directive", "filter", "run", "controller", "service", "animation", "invoke"]);
     if (!matchAngularModule) {
         return false;
     }
