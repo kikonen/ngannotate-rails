@@ -18,6 +18,8 @@ module Ngannotate
     #
     # To explicitly force assets compile in development environment
     #  NG_FORCE=true RAILS_ENV=development bundle exec rake assets:clean assets:precompile
+    # or add to environments/development.rb
+    #  config.ng_annotate.process = true
     #
     def force
       ENV['NG_FORCE'] == 'true'
@@ -28,7 +30,7 @@ module Ngannotate
     # Override by NG_FORCE=true env variable
     #
     def skip
-      !force && (::Rails.env.development? || ::Rails.env.test?)
+      !force && !::Rails.configuration.ng_annotate.process
     end
 
     def evaluate(context, locals)

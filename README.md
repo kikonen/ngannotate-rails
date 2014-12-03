@@ -30,6 +30,15 @@ Options available as environment variables:
                     see ng-annotate documentation
     NG_FORCE=true - force ng-annoate processing in development/test environment
 
+You can also define when ng-annotate should process with the `process` option to the environment configuration
+
+config/environments/development.rb
+
+    Rails.application.configure do
+    ...
+        config.ng_annotate.process = true
+    ...
+    end
 
 Examples,
 
