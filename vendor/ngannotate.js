@@ -2970,7 +2970,7 @@ function matchDirectiveReturnObject(node) {
 }
 
 function limit(name, node) {
-    if (node) {
+    if (node && !node.$limitToMethodName) {
         node.$limitToMethodName = name;
     }
     return node;
@@ -3428,7 +3428,7 @@ function judgeSuspects(ctx) {
         var jumped = jumpOverIife(target);
         var jumpedAndFollowed = followReference(jumped) || jumped;
 
-        if (target.$limitToMethodName && findOuterMethodName(target) !== target.$limitToMethodName) {
+        if (target.$limitToMethodName && target.$limitToMethodName !== "*never*" && findOuterMethodName(target) !== target.$limitToMethodName) {
             return null;
         }
 
@@ -3999,7 +3999,6 @@ window.annotate = function ngAnnotate(src, options) {
 "use strict";
 
 var is = require("simple-is");
-var fmt = require("simple-fmt");
 
 module.exports = {
     inspectComments: inspectComments,
@@ -4045,15 +4044,18 @@ function addSuspect(target, ctx) {
         addObjectExpression(target.declarations[0].init, ctx);
     } else if (target.type === "Property") {
         // {/*@ngInject*/ justthisone: function(a), ..}
+        target.value.$limitToMethodName = "*never*";
         ctx.addModuleContextIndependentSuspect(target.value, ctx);
     } else {
         // /*@ngInject*/ function(a) {}
+        target.$limitToMethodName = "*never*";
         ctx.addModuleContextIndependentSuspect(target, ctx);
     }
 }
 
 function addObjectExpression(node, ctx) {
     nestedObjectValues(node).forEach(function(n) {
+        n.$limitToMethodName = "*never*";
         ctx.addModuleContextIndependentSuspect(n, ctx);
     });
 }
@@ -4073,7 +4075,7 @@ function nestedObjectValues(node, res) {
     return res;
 }
 
-},{"simple-fmt":25,"simple-is":26}],17:[function(require,module,exports){
+},{"simple-is":26}],17:[function(require,module,exports){
 // scope.js
 // MIT licensed, see LICENSE file
 // Copyright (c) 2013-2014 Olov Lassus <olov.lassus@gmail.com>
