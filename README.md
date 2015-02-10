@@ -80,6 +80,30 @@ The ngannotate-rails version number mirrors the version number for the version o
 For minor patch releases, when ng-annotate version is not changing, 4th digit is used (For example, "0.9.6.1").
 Every released version is tagged with tag "v[VERSION]".
 
+Release Process
+---------------
+
+For ngannotate update:
+
+```bash
+git checkout master
+git pull
+rake ngannotate:build
+git citool
+# check that result makes sense and if so,
+# use comment: ngannotate: vX.Y.Z
+git tag vX.Y.Z
+git push
+git push --tags
+gem build ngannotate-rails.gemspec
+gem push ngannotate-rails-X.Y.Z.gems
+```
+
+For internal fixes:
+
+Similar except no ngannotate:build and new version is previous plus fourth digit for patch level (see Versioning).
+
+
 Help
 ----
 
