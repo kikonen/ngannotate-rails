@@ -37,6 +37,9 @@ config/environments/development.rb
     Rails.application.configure do
     ...
         config.ng_annotate.process = true
+#        config.ng_annotate.options = nil
+#        config.ng_annotate.regexp = nil
+#        config.ng_annotate.ignore_paths = '/vendor/'
     ...
     end
 
