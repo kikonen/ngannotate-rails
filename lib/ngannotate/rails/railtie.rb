@@ -9,7 +9,7 @@ module Ngannotate
       # Establish static configuration defaults
 
       # @see ngannotate
-      ng.options = nil
+      ng.options = {}
 
       # @see ngannotate
       ng.regexp = nil
@@ -18,8 +18,9 @@ module Ngannotate
       ng.process = !::Rails.env.development? && !::Rails.env.test?
 
       # comma separate list of paths to ignore from annotation
-      ng.ignore_paths = '/vendor/'
-
+      ng.ignore_paths = [
+        '/vendor/',
+      ]
 
       initializer "ngannotate-rails.add_ngannotate_postprocessor", :group => :all do |app|
         app.assets.register_postprocessor 'application/javascript', Ngannotate::Processor

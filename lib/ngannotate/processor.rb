@@ -33,6 +33,10 @@ module Ngannotate
         end
     end
 
+    def config
+      ::Rails.configuration.ng_annotate
+    end
+
     #
     # Is processing done for current file. This is determined by 3 checks
     #
@@ -45,31 +49,25 @@ module Ngannotate
       !ignore_file? && (force_process || config.process)
     end
 
-    def config
-      ::Rails.configuration.ng_annotate
-    end
-
     #
     # @return true if current file is ignored
     #
     def ignore_file?
-      ignore_paths.any? { |p| @file.index(p) }
-    end
-
-    def ignore_paths
-      @ignore_paths ||= config.ignore_paths.split
+      config.ignore_paths.any? { |p| @file.index(p) }
     end
 
     #
     # Parse extra options for ngannotate
     #
     def parse_ngannotate_options
-      opt = {}
+      opt = config.options.clone
 
-      opt_str = ENV['NG_OPT'] || config.options
-      if opt_str
-        opt = Hash[opt_str.split(',').map { |e| e.split('=') }]
-        opt.symbolize_keys!
+      if ENV['NG_OPT']
+        opt_str = ENV['NG_OPT']
+        if opt_str
+          opt = Hash[opt_str.split(',').map { |e| e.split('=') }]
+          opt.symbolize_keys!
+        end
       end
 
       regexp = ENV['NG_REGEXP'] || config.regexp

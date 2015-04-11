@@ -52,14 +52,14 @@ Defined in "config.ng_annotate"
   * Is annotation processing done for current environment (NG_FORCE=true takes precedence over this)
   * default: true for production, false for development and test
 - options
-  * Comma separated list of options for ngannotate (NG_OPT takes precedence over this)
-  * default: nil
+  * Options for ngannotate (NG_OPT takes precedence over this)
+  * default: {}
 - regexp
   * regexp option for ngannotate (NG_REGEXP takes precedence over this)
   * default: nil
 - ignore_paths
-  * Comma separate list of asset paths, which are ignored from ngannotate processing
-  * default: "/vendor/"
+  * List of asset paths, which are ignored from ngannotate processing
+  * default: ["/vendor/"]
 
 For example,
 
@@ -68,9 +68,15 @@ config/environments/development.rb
     Rails.application.configure do
     ...
         config.ng_annotate.process = true
-        config.ng_annotate.options = "key=value,key2=value"
+        config.ng_annotate.options = {
+          key1: 'value',
+          key2: 'value',
+        }
         config.ng_annotate.regexp = "xxx"
-        config.ng_annotate.ignore_paths = '/vendor/,some/path'
+        config.ng_annotate.ignore_paths = [
+          '/vendor/',
+          'some/path',
+        ]
     ...
     end
 
