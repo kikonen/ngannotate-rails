@@ -9,10 +9,10 @@ module Ngannotate
       # Establish static configuration defaults
 
       # @see ngannotate
-      ng.options = ENV['NG_OPT']
+      ng.options = nil
 
       # @see ngannotate
-      ng.regexp = ENV['NG_REGEXP']
+      ng.regexp = nil
 
       # Disabled by default in development and test environments
       ng.process = !::Rails.env.development? && !::Rails.env.test?

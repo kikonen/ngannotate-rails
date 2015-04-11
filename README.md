@@ -21,33 +21,58 @@ Usage
 
 By default ng-annotate processing is disabled in development and test environments. Processing, however, can be enforced by specifying NG_FORCE=true option.
 
+### Environment options
 
-Options available as environment variables:
+- NG_REGEXP
+  * regexp passed to ng-annoate
+  * see ng-annotate documentation
+- NG_OPT
+  * comma separate list of "opt=value" key pairs passed as options to ng-annotate
+  * see ng-annotate documentation
+- NG_FORCE
+  * force ng-annoate processing in development/test environment
 
-    NG_REGEXP     - regexp passed to ng-annoate
-                    see ng-annotate documentation
-    NG_OPT        - comma separate list of "opt=value" key pairs passed as options to ng-annotate
-                    see ng-annotate documentation
-    NG_FORCE=true - force ng-annoate processing in development/test environment
+For example,
 
-You can also define when ng-annotate should process with the `process` option to the environment configuration
+    # Test assets compile in rails development environment
+    # (assuming config/environments/development.rb is adjusted approriately)
+
+    # with rails 3.2
+    NG_FORCE=true RAILS_ENV=development bundle exec rake assets:clean assets:precompile
+
+    # with rails 4.1
+    NG_FORCE=true RAILS_ENV=development bundle exec rake assets:clobber assets:precompile
+
+
+### Rails configuration options
+
+Defined in "config.ng_annotate"
+
+- process
+  * Is annotation processing done for current environment (NG_FORCE=true takes precedence over this)
+  * default: true for production, false for development and test
+- options
+  * Comma separated list of options for ngannotate (NG_OPT takes precedence over this)
+  * default: nil
+- regexp
+  * regexp option for ngannotate (NG_REGEXP takes precedence over this)
+  * default: nil
+- ignore_paths
+  * Comma separate list of asset paths, which are ignored from ngannotate processing
+  * default: "/vendor/"
+
+For example,
 
 config/environments/development.rb
 
     Rails.application.configure do
     ...
         config.ng_annotate.process = true
-#        config.ng_annotate.options = nil
-#        config.ng_annotate.regexp = nil
-#        config.ng_annotate.ignore_paths = '/vendor/'
+        config.ng_annotate.options = "key=value,key2=value"
+        config.ng_annotate.regexp = "xxx"
+        config.ng_annotate.ignore_paths = '/vendor/,some/path'
     ...
     end
-
-Examples,
-
-    # Test assets compile in rails development environment
-    # (assuming config/environments/development.rb is adjusted approriately)
-    NG_FORCE=true RAILS_ENV=development bundle exec rake assets:clean assets:precompile
 
 
 Testing assets locally

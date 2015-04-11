@@ -65,16 +65,23 @@ module Ngannotate
       @ignore_paths ||= config.ignore_paths.split
     end
 
+    #
+    # Parse extra options for ngannotate
+    #
     def parse_opt
       opt = {}
-      opt_str = config.options
+
+      opt_str = ENV['NG_OPT'] || config.options
       if opt_str
         opt = Hash[opt_str.split(',').map { |e| e.split('=') }]
         opt.symbolize_keys!
       end
-      if config.regexp
-        opt[:regexp] = config.regexp
+
+      regexp = ENV['NG_REGEXP'] || config.regexp
+      if regexp
+        opt[:regexp] = regexp
       end
+
       opt
     end
   end
