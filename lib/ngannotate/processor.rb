@@ -17,7 +17,7 @@ module Ngannotate
       ::Rails.logger.info "ng-#{state}: #{@file}"
       return data unless need_process?
 
-      opt = { add: true }.merge!(parse_opt)
+      opt = { add: true }.merge!(parse_ngannotate_options)
       r = @exec_context.call 'window.annotate', data, opt
       r['src']
     end
@@ -34,10 +34,14 @@ module Ngannotate
     end
 
     #
-    # Skip processing in environments where it does not make sense.
-    # Override by NG_FORCE=true env variable
+    # Is processing done for current file. This is determined by 3 checks
+    #
+    # - config.ignore_paths
+    # - config.process
+    # - NG_FORCE=true env option
     #
     def need_process?
+      force_process = ENV['NG_FORCE'] == 'true'
       !ignore_file? && (force_process || config.process)
     end
 
@@ -46,17 +50,8 @@ module Ngannotate
     end
 
     #
-    # To allow testing assets compile in development environment
+    # @return true if current file is ignored
     #
-    # To explicitly force assets compile in development environment
-    #  NG_FORCE=true RAILS_ENV=development bundle exec rake assets:clean assets:precompile
-    # or add to environments/development.rb
-    #  config.ng_annotate.process = true
-    #
-    def force_process
-      ENV['NG_FORCE'] == 'true'
-    end
-
     def ignore_file?
       ignore_paths.any? { |p| @file.index(p) }
     end
@@ -68,7 +63,7 @@ module Ngannotate
     #
     # Parse extra options for ngannotate
     #
-    def parse_opt
+    def parse_ngannotate_options
       opt = {}
 
       opt_str = ENV['NG_OPT'] || config.options
