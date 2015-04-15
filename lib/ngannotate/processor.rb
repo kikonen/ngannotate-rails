@@ -29,8 +29,12 @@ module Ngannotate
     # Skip processing in environments where it does not make sense.
     # Override by NG_FORCE=true env variable
     #
-    def skip
+    def skip_by_config
       !force && !::Rails.configuration.ng_annotate.process
+    end
+
+    def skip
+      skip_by_config || !@file.start_with?(::Rails.root.to_s)
     end
 
     def evaluate(context, locals)
