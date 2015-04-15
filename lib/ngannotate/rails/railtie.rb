@@ -1,5 +1,9 @@
 require 'active_support/core_ext/class/attribute'
-require 'ngannotate/processor'
+if Ngannotate.sprockets_v3?
+  require 'ngannotate/processor3'
+else
+  require 'ngannotate/processor'
+end
 
 module Ngannotate
   module Rails
