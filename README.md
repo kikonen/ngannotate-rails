@@ -58,7 +58,8 @@ Defined in "config.ng_annotate"
   * regexp option for ngannotate (NG_REGEXP takes precedence over this)
   * default: nil
 - ignore_paths
-  * List of asset paths, which are ignored from ngannotate processing
+  * List of asset paths, which are ignored from ngannotate processing. Values can be either
+    string or proc/lambda instances
   * default: ["/vendor/"]
 
 For example,

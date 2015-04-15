@@ -53,7 +53,13 @@ module Ngannotate
     # @return true if current file is ignored
     #
     def ignore_file?
-      config.ignore_paths.any? { |p| @file.index(p) }
+      config.ignore_paths.any? do |p|
+        if p.is_a? Proc
+          p.call(@file)
+        else
+          @file.index(p)
+        end
+      end
     end
 
     #
