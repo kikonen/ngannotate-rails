@@ -1,7 +1,7 @@
 PATH
   remote: ../
   specs:
-    ngannotate-rails (0.15.4)
+    ngannotate-rails (0.15.4.1)
       execjs
       rails (>= 3.1)
 
