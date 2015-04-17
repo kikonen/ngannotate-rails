@@ -52,15 +52,16 @@ Defined in "config.ng_annotate"
   * Is annotation processing done for current environment (NG_FORCE=true takes precedence over this)
   * default: true for production, false for development and test
 - options
-  * Options for ngannotate (NG_OPT takes precedence over this)
+  * Options for ngannotate (NG_OPT and NG_REGEXP env variables take precedence over this)
   * default: {}
-- regexp
-  * regexp option for ngannotate (NG_REGEXP takes precedence over this)
-  * default: nil
+- paths
+  * Asset paths, which are handled. Paths in ignore_paths override this setting
+    Values can be [String | Regexp | Proc] instances
+  * default: [/.*/]
 - ignore_paths
-  * List of asset paths, which are ignored from ngannotate processing. Values can be either
-    string or proc/lambda instances
-  * default: ["/vendor/"]
+  * List of asset paths, which are ignored from ngannotate processing.
+    Values can be [String | Regexp | Proc] instances
+  * default: ['/vendor/']
 
 For example,
 
@@ -71,12 +72,14 @@ config/environments/development.rb
         config.ng_annotate.process = true
         config.ng_annotate.options = {
           key1: 'value',
-          key2: 'value',
+          regexp: '...',
         }
-        config.ng_annotate.regexp = "xxx"
+        config.ng_annotate.paths = [
+          Rails.root.to_s,
+        ]
         config.ng_annotate.ignore_paths = [
           '/vendor/',
-          'some/path',
+          '/some/path/'
         ]
     ...
     end
