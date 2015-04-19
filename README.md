@@ -114,18 +114,23 @@ precompile & start server
 Versioning
 ----------
 
-The ngannotate-rails version number mirrors the version number for the version of ng-annotate that is bundled with it.
-For minor patch releases, when ng-annotate version is not changing, 4th digit is used (For example, "0.9.6.1").
-Every released version is tagged with tag "v[VERSION]".
+Originally version numbering of this gem followed ng-annoate. However, in order to improve
+handling of possibly compatibility breaking fixes and improvements, version schema is now
+separated from ng-annotate. Instead of matching versions, changelog in
+[wiki](https://github.com/kikonen/ngannotate-rails/wiki) will indicate which is currently matching
+ng-annotate version.
+
+Every released version is tagged with tag "vX.Y.Z".
 
 Release Process
 ---------------
 
-For ngannotate update:
+For ngannotate update (or any other improvements/fixes):
 
 ```bash
 git checkout master
 git pull
+# if ngannotate update
 rake ngannotate:build
 git citool
 # check that result makes sense and if so,
@@ -136,11 +141,6 @@ git push --tags
 gem build ngannotate-rails.gemspec
 gem push ngannotate-rails-X.Y.Z.gems
 ```
-
-For internal fixes:
-
-Similar except no ngannotate:build and new version is previous plus fourth digit for patch level (see Versioning).
-
 
 Help
 ----
