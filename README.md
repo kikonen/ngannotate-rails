@@ -21,30 +21,68 @@ Usage
 
 By default ng-annotate processing is disabled in development and test environments. Processing, however, can be enforced by specifying NG_FORCE=true option.
 
+### Environment options
 
-Options available as environment variables:
+- NG_REGEXP
+  * regexp passed to ng-annoate
+  * see ng-annotate documentation
+- NG_OPT
+  * comma separate list of "opt=value" key pairs passed as options to ng-annotate
+  * see ng-annotate documentation
+- NG_FORCE
+  * force ng-annoate processing in development/test environment
 
-    NG_REGEXP     - regexp passed to ng-annoate
-                    see ng-annotate documentation
-    NG_OPT        - comma separate list of "opt=value" key pairs passed as options to ng-annotate
-                    see ng-annotate documentation
-    NG_FORCE=true - force ng-annoate processing in development/test environment
+For example,
 
-You can also define when ng-annotate should process with the `process` option to the environment configuration
+    # Test assets compile in rails development environment
+    # (assuming config/environments/development.rb is adjusted approriately)
+
+    # with rails 3.2
+    NG_FORCE=true RAILS_ENV=development bundle exec rake assets:clean assets:precompile
+
+    # with rails 4.1
+    NG_FORCE=true RAILS_ENV=development bundle exec rake assets:clobber assets:precompile
+
+
+### Rails configuration options
+
+Defined in "config.ng_annotate"
+
+- process
+  * Is annotation processing done for current environment (NG_FORCE=true takes precedence over this)
+  * default: true for production, false for development and test
+- options
+  * Options for ngannotate (NG_OPT and NG_REGEXP env variables take precedence over this)
+  * default: {}
+- paths
+  * Asset paths, which are handled. Paths in ignore_paths override this setting
+    Values can be [String | Regexp | Proc] instances
+  * default: [/.*/]
+- ignore_paths
+  * List of asset paths, which are ignored from ngannotate processing.
+    Values can be [String | Regexp | Proc] instances
+  * default: ['/vendor/']
+
+For example,
 
 config/environments/development.rb
 
     Rails.application.configure do
     ...
         config.ng_annotate.process = true
+        config.ng_annotate.options = {
+          key1: 'value',
+          regexp: '...',
+        }
+        config.ng_annotate.paths = [
+          Rails.root.to_s,
+        ]
+        config.ng_annotate.ignore_paths = [
+          '/vendor/',
+          '/some/path/'
+        ]
     ...
     end
-
-Examples,
-
-    # Test assets compile in rails development environment
-    # (assuming config/environments/development.rb is adjusted approriately)
-    NG_FORCE=true RAILS_ENV=development bundle exec rake assets:clean assets:precompile
 
 
 Testing assets locally
