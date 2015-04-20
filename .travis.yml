@@ -1,0 +1,11 @@
+language: ruby
+rvm:
+  - 2.1.5
+sudo: false
+cache: bundler
+gemfile: test/rails_4.2.x/Gemfile
+branches:
+  only:
+    - master
+
+script: travis/run.sh
