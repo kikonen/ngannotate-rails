@@ -3,9 +3,22 @@ rvm:
   - 2.1.5
 sudo: false
 cache: bundler
-gemfile: test/rails_4.2.x/Gemfile
+gemfile:
+  - test/rails_4.2.x/Gemfile
+  - test/example/Gemfile
 branches:
   only:
     - master
+env:
+  - SPROCKETS3=true
+  - SPROCKETS3=false
+matrix:
+  exclude:
+    - rvm: 2.1.5
+      gemfile: test/example/Gemfile
+      env: SPROCKETS3=true
+    - rvm: 2.1.5
+      gemfile: test/rails_4.2.x/Gemfile
+      env: SPROCKETS3=false
 
 script: travis/run.sh
