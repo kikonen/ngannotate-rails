@@ -8,3 +8,13 @@ gem 'therubyracer',  platforms: :ruby
 
 gem 'sprockets', '3.0.0.beta.8'
 gem 'ngannotate-rails', path: File.expand_path('../../..', __FILE__), require: true
+
+gem 'rspec-rails'
+gem 'rack-test'
+
+# various misc useful utilities
+gem 'pry-rails'
+gem 'awesome_print'
+gem 'oj'
+gem 'hashie'
+gem 'pry-byebug'
