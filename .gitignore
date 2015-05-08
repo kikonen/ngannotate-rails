@@ -18,3 +18,4 @@ test/version_tmp
 tmp
 node_modules
 *.log
+**/public/assets
