@@ -34,7 +34,6 @@ EOF
 
   it 'annotate js' do
     get '/assets/angular-app-js.js'
-
-   expect(response.body).to eq expected_content
+    expect(response.body).to eq expected_content
   end
 end
