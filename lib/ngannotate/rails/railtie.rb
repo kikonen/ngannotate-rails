@@ -30,8 +30,12 @@ module Ngannotate
         ]
       end
 
-      initializer "ngannotate-rails.add_ngannotate_postprocessor", :group => :all do |app|
-        if app.assets
+      if config.respond_to?(:assets)
+        config.assets.configure do |env|
+          env.register_postprocessor 'application/javascript', Ngannotate::Processor
+        end
+      else
+        initializer "ngannotate-rails.add_ngannotate_postprocessor", :group => :all do |app|
           app.assets.register_postprocessor 'application/javascript', Ngannotate::Processor
         end
       end
