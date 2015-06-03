@@ -21,6 +21,32 @@ Usage
 
 By default ng-annotate processing is disabled in development and test environments. Processing, however, can be enforced by specifying NG_FORCE=true option.
 
+
+### NOTES
+
+#### Javascript runtime
+
+[Issue with OSX javascript runtime](https://github.com/kikonen/ngannotate-rails/issues/20)
+
+Use "therubyracer" as javascript runtime
+
+Gemfile
+```ruby
+gem 'therubyracer',  platforms: :ruby
+```
+
+
+#### Heroku
+[Issue with Heroku](https://github.com/kikonen/ngannotate-rails/issues/10)
+
+When pushing to heroku its important to invalidate all of your assets.
+
+
+```ruby
+Rails.application.config.assets.version = '1.0'
+Rails.application.config.assets.version = '1.1
+```
+
 ### Environment options
 
 - NG_REGEXP
@@ -42,7 +68,6 @@ For example,
 
     # with rails 4.1
     NG_FORCE=true RAILS_ENV=development bundle exec rake assets:clobber assets:precompile
-
 
 ### Rails configuration options
 
