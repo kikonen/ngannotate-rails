@@ -50,13 +50,13 @@ Rails.application.config.assets.version = '1.1
 ### Environment options
 
 - NG_REGEXP
-  * regexp passed to ng-annoate
+  * regexp passed to ng-annotate
   * see ng-annotate documentation
 - NG_OPT
   * comma separate list of "opt=value" key pairs passed as options to ng-annotate
   * see ng-annotate documentation
 - NG_FORCE
-  * force ng-annoate processing in development/test environment
+  * force ng-annotate processing in development/test environment
 
 For example,
 
@@ -139,7 +139,7 @@ precompile & start server
 Versioning
 ----------
 
-Originally version numbering of this gem followed ng-annoate. However, in order to improve
+Originally version numbering of this gem followed ng-annotate. However, in order to improve
 handling of possibly compatibility breaking fixes and improvements, version schema is now
 separated from ng-annotate. Instead of matching versions, changelog in
 [wiki](https://github.com/kikonen/ngannotate-rails/wiki) will indicate which is currently matching
