@@ -1,8 +1,8 @@
 require 'active_support/core_ext/class/attribute'
-if Ngannotate.sprockets_v3?
-  require 'ngannotate/processor3'
-else
+if Ngannotate.sprockets_v2?
   require 'ngannotate/processor'
+else
+  require 'ngannotate/processor3'
 end
 
 module Ngannotate
