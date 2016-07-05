@@ -35,6 +35,33 @@ Gemfile
 gem 'therubyracer',  platforms: :ruby
 ```
 
+For faster transpiling, can try to utilize miniracer
+
+Gemfile
+```ruby
+#gem 'therubyracer',  platforms: :ruby
+gem 'libv8', '~> 5.0'
+gem 'mini_racer', '~> 0.1.4'
+
+# HACK KI due to "mini_racer"
+gem 'sprockets-babel', git: 'https://github.com/kikonen/sprockets-babel.git', tag: '0.0.6.2'
+```
+
+#### ES& support
+
+If using ES6, it's recommended to use explicit "ngInject;" for classes.
+
+test_controller.es6
+````javascript
+"use strict";
+export class TestController {
+  constructor($q) {
+    "ngInject";
+
+    this.$q = $q;
+  }
+}
+```
 
 #### Heroku
 [Issue with Heroku](https://github.com/kikonen/ngannotate-rails/issues/10)
