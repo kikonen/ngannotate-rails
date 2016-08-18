@@ -71,7 +71,7 @@ When pushing to heroku its important to invalidate all of your assets.
 
 ```ruby
 Rails.application.config.assets.version = '1.0'
-Rails.application.config.assets.version = '1.1
+Rails.application.config.assets.version = '1.1'
 ```
 
 ### Environment options
