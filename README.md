@@ -52,7 +52,7 @@ gem 'sprockets-babel', git: 'https://github.com/kikonen/sprockets-babel.git', ta
 If using ES6, it's recommended to use explicit "ngInject;" for classes.
 
 test_controller.es6
-````javascript
+```javascript
 "use strict";
 export class TestController {
   constructor($q) {
