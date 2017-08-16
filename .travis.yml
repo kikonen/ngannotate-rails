@@ -1,24 +1,33 @@
 language: ruby
 rvm:
   - 2.1.5
+  - 2.4.1
 sudo: false
 cache: bundler
 gemfile:
+  - test/rails_5.1.x/Gemfile
   - test/rails_4.2.x/Gemfile
   - test/example/Gemfile
 branches:
   only:
     - master
 env:
-  - SPROCKETS3=true
-  - SPROCKETS3=false
+  - VER=3_2
+  - VER=4_2
+  - VER=5_1
 matrix:
   exclude:
+    - rvm: 2.4.1
+    - rvm: 2.1-5
+  include:
     - rvm: 2.1.5
       gemfile: test/example/Gemfile
-      env: SPROCKETS3=true
-    - rvm: 2.1.5
+      env: VER=3_2
+    - rvm: 2.4.1
       gemfile: test/rails_4.2.x/Gemfile
-      env: SPROCKETS3=false
+      env: VER=4_2
+    - rvm: 2.4.1
+      gemfile: test/rails_5.1.x/Gemfile
+      env: VER=5_1
 
 script: travis/run.sh
