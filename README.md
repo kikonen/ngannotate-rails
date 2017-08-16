@@ -47,9 +47,9 @@ gem 'mini_racer', '~> 0.1.4'
 gem 'sprockets-babel', git: 'https://github.com/kikonen/sprockets-babel.git', tag: '0.0.6.2'
 ```
 
-#### ES& support
+#### ES2015+/coffeescript support
 
-If using ES6, it's recommended to use explicit "ngInject;" for classes.
+If using ES2015+ or coffeescript, it's recommended to use explicit "ngInject;" for classes.
 
 test_controller.es6
 ```javascript
