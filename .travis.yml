@@ -18,7 +18,7 @@ env:
 matrix:
   exclude:
     - rvm: 2.4.1
-    - rvm: 2.1-5
+    - rvm: 2.1.5
   include:
     - rvm: 2.1.5
       gemfile: test/example/Gemfile
